@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SERTA · Intranet</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            navy: { DEFAULT: '#0a1628', mid: '#122040' },
+            brand: { DEFAULT: '#1a56db', light: '#3b82f6', pale: '#dbeafe' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .fade-in { animation: fadeIn .2s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+// ─── SUPABASE ─────────────────────────────────────────────────
+const sb = supabase.createClient(
+  'https://yxrjwngkrjhzujtgdzwv.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4cmp3bmdrcmpoenVqdGdkend2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0Mjk0NzMsImV4cCI6MjA4OTAwNTQ3M30.V79Anw5DYvlBGKOEejUSKZaYPsauT4XRbMmckvO7go0'
+);
+
+// ─── UTILIDADES ───────────────────────────────────────────────
+const fmt = n => new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:0}).format(n||0);
+const fmtDate = d => d ? new Date(d+'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+const SESSION_KEY = 'serta_user';
+const getSession = () => { try { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch { return null; } };
+const setSession = u => sessionStorage.setItem(SESSION_KEY, JSON.stringify(u));
+const clearSession = () => sessionStorage.removeItem(SESSION_KEY);
+
+// ─── COMPONENTES BASE ─────────────────────────────────────────
+const Badge = ({ color='gray', children }) => {
+  const cls = {green:'bg-green-100 text-green-800',red:'bg-red-100 text-red-800',blue:'bg-blue-100 text-blue-800',yellow:'bg-yellow-100 text-yellow-800',purple:'bg-purple-100 text-purple-800',gray:'bg-gray-100 text-gray-600',orange:'bg-orange-100 text-orange-800'}[color]||'bg-gray-100 text-gray-600';
+  return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cls}`}>{children}</span>;
+};
+
+const Btn = ({ children, onClick, variant='primary', size='md', type='button', disabled=false, className='' }) => {
+  const base = 'inline-flex items-center justify-center font-medium rounded-lg transition-all focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed';
+  const sizes = {sm:'px-3 py-1.5 text-xs',md:'px-4 py-2 text-sm',lg:'px-6 py-2.5 text-sm'};
+  const variants = {primary:'bg-brand text-white hover:bg-brand-light shadow-sm',success:'bg-green-600 text-white hover:bg-green-700 shadow-sm',danger:'bg-red-500 text-white hover:bg-red-600 shadow-sm',outline:'border border-gray-300 text-gray-700 hover:bg-gray-50'};
+  return <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${sizes[size]} ${variants[variant]||variants.primary} ${className}`}>{children}</button>;
+};
+
+const Field = ({ label, className='', ...props }) => (
+  <div className={`mb-4 ${className}`}>
+    {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
+    <input className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-brand" {...props} />
+  </div>
+);
+
+const Sel = ({ label, options=[], className='', ...props }) => (
+  <div className={`mb-4 ${className}`}>
+    {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
+    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white" {...props}>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  </div>
+);
+
+const Modal = ({ title, onClose, children, size='md' }) => {
+  const widths = {sm:'max-w-sm',md:'max-w-lg',lg:'max-w-2xl',xl:'max-w-4xl'};
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className={`bg-white rounded-xl shadow-2xl w-full ${widths[size]} max-h-[90vh] overflow-y-auto fade-in`}>
+        <div className="flex justify-between items-center px-6 py-4 border-b border-gray-100">
+          <h3 className="font-semibold text-gray-800 text-base">{title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+        </div>
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  );
+};
+
+const Alert = ({ msg, type='error', onClose }) => {
+  if(!msg) return null;
+  const cls = type==='error'?'bg-red-50 border-red-200 text-red-700':'bg-green-50 border-green-200 text-green-700';
+  return <div className={`flex items-center justify-between border rounded-lg px-4 py-3 mb-4 text-sm ${cls}`}><span>{msg}</span>{onClose&&<button onClick={onClose} className="ml-2 opacity-60 hover:opacity-100">×</button>}</div>;
+};
+
+const Spinner = () => <div className="flex items-center justify-center p-10"><div className="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin"/></div>;
+const Empty = ({icon='📋',title,desc}) => <div className="text-center py-12"><div className="text-4xl mb-3">{icon}</div><p className="text-gray-600 font-medium">{title}</p>{desc&&<p className="text-gray-400 text-sm mt-1">{desc}</p>}</div>;
+
+// ─── LAYOUT ───────────────────────────────────────────────────
+const NAV = [
+  {id:'dashboard',icon:'📊',label:'Dashboard'},
+  {id:'empleados',icon:'👥',label:'Empleados',perm:'perm_empleados'},
+  {id:'clientes',icon:'🤝',label:'Clientes',perm:'perm_clientes'},
+  {id:'proveedores',icon:'📦',label:'Proveedores',perm:'perm_proveedores'},
+  {id:'proyectos',icon:'📋',label:'Proyectos',perm:'perm_proyectos'},
+  {id:'ventas',icon:'📈',label:'Control de Ventas',perm:'perm_ventas'},
+];
+
+const Sidebar = ({page,setPage,user}) => {
+  const initials = user.nombre.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+  return (
+    <aside className="w-60 bg-navy flex flex-col min-h-screen shrink-0">
+      <div className="px-5 py-5 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <span className="text-2xl">🏗️</span>
+          <div><div className="text-white font-bold text-base">SERTA</div><div className="text-white/40 text-xs">Intranet</div></div>
+        </div>
+      </div>
+      <nav className="flex-1 p-3 space-y-0.5">
+        {NAV.filter(n=>!n.perm||user[n.perm]).map(n=>(
+          <button key={n.id} onClick={()=>setPage(n.id)}
+            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${page===n.id?'bg-brand text-white':'text-white/60 hover:bg-white/10 hover:text-white'}`}>
+            <span>{n.icon}</span><span>{n.label}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="px-4 py-4 border-t border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-brand rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0">{initials}</div>
+          <div className="min-w-0">
+            <div className="text-white text-xs font-medium truncate">{user.nombre}</div>
+            <div className="text-white/40 text-xs">{user.rol}</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+};
+
+const TopBar = ({title,onLogout}) => (
+  <header className="bg-white border-b border-gray-200 px-6 py-3.5 flex justify-between items-center shrink-0">
+    <h1 className="text-base font-semibold text-gray-800">{title}</h1>
+    <button onClick={onLogout} className="text-sm text-gray-500 hover:text-red-500 transition-colors">🚪 Salir</button>
+  </header>
+);
+
+// ─── LOGIN ────────────────────────────────────────────────────
+const Login = ({onLogin}) => {
+  const [email,setEmail] = useState('mvillarreal@serta.com.mx');
+  const [pass,setPass]   = useState('');
+  const [err,setErr]     = useState('');
+  const [loading,setLoading] = useState(false);
+
+  const submit = async e => {
+    e.preventDefault(); setErr(''); setLoading(true);
+    try {
+      const {data,error} = await sb.rpc('fn_login',{p_email:email.trim(),p_password:pass});
+      if(error) throw error;
+      if(!data||data.length===0){setErr('Correo o contraseña incorrectos.');return;}
+      setSession(data[0]); onLogin(data[0]);
+    } catch(e){ setErr('Error de conexión. Verifica tus credenciales.'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-navy to-navy-mid flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm fade-in">
+        <div className="text-center mb-8">
+          <div className="text-5xl mb-3">🏗️</div>
+          <h1 className="text-2xl font-bold text-gray-800">SERTA</h1>
+          <p className="text-gray-500 text-sm mt-1">Sistema de Gestión Interna</p>
+        </div>
+        {err && <Alert msg={err} onClose={()=>setErr('')}/>}
+        <form onSubmit={submit}>
+          <Field label="Correo electrónico" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="usuario@serta.com.mx" required/>
+          <Field label="Contraseña" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" required/>
+          <Btn type="submit" disabled={loading} className="w-full mt-2" size="lg">{loading?'Verificando...':'Iniciar Sesión'}</Btn>
+        </form>
+        <p className="text-center text-xs text-gray-400 mt-5">SERTA · Plataforma Interna</p>
+      </div>
+    </div>
+  );
+};
+
+// ─── DASHBOARD ────────────────────────────────────────────────
+const Dashboard = () => {
+  const [stats,setStats] = useState(null);
+  const [proyectos,setProyectos] = useState([]);
+
+  useEffect(()=>{
+    const load = async () => {
+      const [emp,cli,prov,proy] = await Promise.all([
+        sb.from('empleados').select('id,activo'),
+        sb.from('clientes').select('id'),
+        sb.from('proveedores').select('id'),
+        sb.from('proyectos').select('*').order('created_at',{ascending:false}),
+      ]);
+      setStats({
+        empleados:(emp.data||[]).filter(e=>e.activo).length,
+        clientes:(cli.data||[]).length,
+        proveedores:(prov.data||[]).length,
+        proyActivos:(proy.data||[]).filter(p=>p.estatus==='En Progreso').length,
+        totalCartera:(proy.data||[]).reduce((s,p)=>s+Number(p.presupuesto),0),
+      });
+      setProyectos((proy.data||[]).slice(0,6));
+    };
+    load();
+  },[]);
+
+  const eColor = {'Planeación':'yellow','En Progreso':'blue','Completado':'green','Pausado':'red'};
+  if(!stats) return <Spinner/>;
+
+  return (
+    <div className="p-6 space-y-6 fade-in">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        {[
+          {label:'Empleados activos',val:stats.empleados,icon:'👥',color:'text-blue-600'},
+          {label:'Clientes',val:stats.clientes,icon:'🤝',color:'text-green-600'},
+          {label:'Proveedores',val:stats.proveedores,icon:'📦',color:'text-purple-600'},
+          {label:'Proyectos activos',val:stats.proyActivos,icon:'📋',color:'text-orange-600'},
+          {label:'Cartera total',val:fmt(stats.totalCartera),icon:'💰',color:'text-brand'},
+        ].map((s,i)=>(
+          <div key={i} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+            <div className="text-xl mb-2">{s.icon}</div>
+            <div className={`text-xl font-bold ${s.color}`}>{s.val}</div>
+            <div className="text-xs text-gray-500 mt-0.5">{s.label}</div>
+          </div>
+        ))}
+      </div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="px-5 py-4 border-b border-gray-50"><h2 className="font-semibold text-gray-800 text-sm">Proyectos Recientes</h2></div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="bg-gray-50">{['Proyecto','Estatus','Presupuesto','Avance'].map(h=><th key={h} className="text-left px-5 py-3 text-gray-500 font-medium text-xs">{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-gray-50">
+              {proyectos.length===0?<tr><td colSpan={4} className="text-center py-8 text-gray-400 text-sm">Sin proyectos aún</td></tr>
+              :proyectos.map(p=>(
+                <tr key={p.id} className="hover:bg-gray-50/50">
+                  <td className="px-5 py-3 font-medium text-gray-800">{p.nombre}</td>
+                  <td className="px-5 py-3"><Badge color={eColor[p.estatus]||'gray'}>{p.estatus}</Badge></td>
+                  <td className="px-5 py-3 text-gray-600">{fmt(p.presupuesto)}</td>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 bg-gray-100 rounded-full h-1.5"><div className="bg-brand h-1.5 rounded-full" style={{width:`${p.avance}%`}}/></div>
+                      <span className="text-xs text-gray-500">{p.avance}%</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── EMPLEADOS ────────────────────────────────────────────────
+const Empleados = () => {
+  const [rows,setRows] = useState([]); const [loading,setLoading] = useState(true);
+  const [modal,setModal] = useState(null); const [sel,setSel] = useState(null);
+  const [form,setForm] = useState({}); const [pwdForm,setPwdForm] = useState({nueva:'',confirma:''});
+  const [alert,setAlert] = useState(null); const [saving,setSaving] = useState(false);
+  const ROLES = ['Administrador','Gerente','Coordinador','Analista'];
+  const PERMS = [{key:'perm_empleados',label:'Empleados'},{key:'perm_clientes',label:'Clientes'},{key:'perm_proveedores',label:'Proveedores'},{key:'perm_proyectos',label:'Proyectos'},{key:'perm_ventas',label:'Control de Ventas'}];
+
+  const load = useCallback(async()=>{setLoading(true);const{data}=await sb.from('empleados').select('*').order('nombre');setRows(data||[]);setLoading(false);},[]);
+  useEffect(()=>{load();},[load]);
+
+  const f = (k,v) => setForm(p=>({...p,[k]:v}));
+  const openAdd = () => { setForm({nombre:'',email:'',password:'',departamento:'',rol:'Analista',activo:true,perm_empleados:false,perm_clientes:false,perm_proveedores:false,perm_proyectos:false,perm_ventas:false}); setModal('add'); };
+  const openEdit = r => { setForm({...r}); setSel(r); setModal('edit'); };
+  const openPerms = r => { setForm({...r}); setSel(r); setModal('perms'); };
+  const openPwd = r => { setPwdForm({nueva:'',confirma:''}); setSel(r); setModal('pwd'); };
+
+  const saveAdd = async () => {
+    if(!form.nombre||!form.email||!form.password){setAlert({msg:'Nombre, email y contraseña son obligatorios.',type:'error'});return;}
+    setSaving(true);
+    const{error}=await sb.rpc('fn_crear_empleado',{p_nombre:form.nombre,p_email:form.email,p_password:form.password,p_departamento:form.departamento,p_rol:form.rol,p_perm_empleados:form.perm_empleados,p_perm_clientes:form.perm_clientes,p_perm_proveedores:form.perm_proveedores,p_perm_proyectos:form.perm_proyectos,p_perm_ventas:form.perm_ventas});
+    setSaving(false);
+    if(error){setAlert({msg:'Error: '+error.message,type:'error'});return;}
+    setAlert({msg:'Empleado creado correctamente.',type:'success'});setModal(null);load();
+  };
+  const saveEdit = async () => {
+    setSaving(true);
+    const{error}=await sb.from('empleados').update({nombre:form.nombre,email:form.email,departamento:form.departamento,rol:form.rol,activo:form.activo}).eq('id',sel.id);
+    setSaving(false);if(error){setAlert({msg:'Error: '+error.message,type:'error'});return;}
+    setAlert({msg:'Empleado actualizado.',type:'success'});setModal(null);load();
+  };
+  const savePerms = async () => {
+    setSaving(true);
+    const{error}=await sb.from('empleados').update({perm_empleados:form.perm_empleados,perm_clientes:form.perm_clientes,perm_proveedores:form.perm_proveedores,perm_proyectos:form.perm_proyectos,perm_ventas:form.perm_ventas}).eq('id',sel.id);
+    setSaving(false);if(error){setAlert({msg:'Error: '+error.message,type:'error'});return;}
+    setAlert({msg:'Permisos actualizados.',type:'success'});setModal(null);load();
+  };
+  const savePwd = async () => {
+    if(!pwdForm.nueva||pwdForm.nueva!==pwdForm.confirma){setAlert({msg:'Las contraseñas no coinciden.',type:'error'});return;}
+    if(pwdForm.nueva.length<6){setAlert({msg:'Mínimo 6 caracteres.',type:'error'});return;}
+    setSaving(true);const{error}=await sb.rpc('fn_cambiar_password',{p_id:sel.id,p_nueva:pwdForm.nueva});
+    setSaving(false);if(error){setAlert({msg:'Error: '+error.message,type:'error'});return;}
+    setAlert({msg:'Contraseña actualizada.',type:'success'});setModal(null);
+  };
+  const toggleActivo = async r => {await sb.from('empleados').update({activo:!r.activo}).eq('id',r.id);load();};
+
+  return (
+    <div className="p-6 fade-in">
+      <div className="flex justify-between items-center mb-5">
+        <div><h2 className="text-base font-semibold text-gray-800">Gestión de Empleados</h2><p className="text-xs text-gray-500 mt-0.5">{rows.filter(r=>r.activo).length} activos · {rows.filter(r=>!r.activo).length} inactivos</p></div>
+        <Btn onClick={openAdd}>+ Agregar Empleado</Btn>
+      </div>
+      {alert&&<Alert msg={alert.msg} type={alert.type} onClose={()=>setAlert(null)}/>}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {loading?<Spinner/>:rows.length===0?<Empty icon="👥" title="Sin empleados"/>:(
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50 border-b border-gray-100">{['Empleado','Departamento','Rol','Estado','Acciones'].map(h=><th key={h} className="text-left px-5 py-3 text-gray-500 font-medium text-xs">{h}</th>)}</tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {rows.map(r=>(
+                  <tr key={r.id} className="hover:bg-gray-50/50">
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-blue-50 text-brand rounded-full flex items-center justify-center text-xs font-bold shrink-0">{r.nombre.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>
+                        <div><div className="font-medium text-gray-800">{r.nombre}</div><div className="text-xs text-gray-400">{r.email}</div></div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-gray-600">{r.departamento||'—'}</td>
+                    <td className="px-5 py-3"><Badge color={r.rol==='Administrador'?'blue':r.rol==='Gerente'?'purple':r.rol==='Coordinador'?'orange':'gray'}>{r.rol}</Badge></td>
+                    <td className="px-5 py-3"><button onClick={()=>toggleActivo(r)}><Badge color={r.activo?'green':'red'}>{r.activo?'✓ Activo':'✗ Inactivo'}</Badge></button></td>
+                    <td className="px-5 py-3">
+                      <div className="flex gap-3">
+                        <button onClick={()=>openEdit(r)} className="text-xs text-brand hover:underline">Editar</button>
+                        <button onClick={()=>openPerms(r)} className="text-xs text-purple-600 hover:underline">Permisos</button>
+                        <button onClick={()=>openPwd(r)} className="text-xs text-orange-500 hover:underline">Contraseña</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {modal==='add'&&<Modal title="Agregar Empleado" onClose={()=>setModal(null)} size="lg">
+        <div className="grid grid-cols-2 gap-x-4">
+          <Field label="Nombre completo *" value={form.nombre} onChange={e=>f('nombre',e.target.value)} className="col-span-2"/>
+          <Field label="Correo electrónico *" type="email" value={form.email} onChange={e=>f('email',e.target.value)}/>
+          <Field label="Contraseña inicial *" type="password" value={form.password} onChange={e=>f('password',e.target.value)} placeholder="Mínimo 6 caracteres"/>
+          <Field label="Departamento" value={form.departamento} onChange={e=>f('departamento',e.target.value)}/>
+          <Sel label="Rol" value={form.rol} onChange={e=>f('rol',e.target.value)} options={ROLES.map(r=>({value:r,label:r}))}/>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">Permisos de acceso:</p>
+        <div className="grid grid-cols-5 gap-2 mb-5">
+          {PERMS.map(p=><label key={p.key} className="flex flex-col items-center gap-1 text-center cursor-pointer"><input type="checkbox" checked={form[p.key]||false} onChange={e=>f(p.key,e.target.checked)} className="w-4 h-4 accent-blue-600"/><span className="text-xs text-gray-600">{p.label}</span></label>)}
+        </div>
+        <div className="flex justify-end gap-3"><Btn variant="outline" onClick={()=>setModal(null)}>Cancelar</Btn><Btn onClick={saveAdd} disabled={saving}>{saving?'Guardando...':'Guardar'}</Btn></div>
+      </Modal>}
+
+      {modal==='edit'&&<Modal title="Editar Empleado" onClose={()=>setModal(null)} size="lg">
+        <div className="grid grid-cols-2 gap-x-4">
+          <Field label="Nombre completo" value={form.nombre} onChange={e=>f('nombre',e.target.value)} className="col-span-2"/>
+          <Field label="Correo" type="email" value={form.email} onChange={e=>f('email',e.target.value)}/>
+          <Field label="Departamento" value={form.departamento} onChange={e=>f('departamento',e.target.value)}/>
+          <Sel label="Rol" value={form.rol} onChange={e=>f('rol',e.target.value)} options={ROLES.map(r=>({value:r,label:r}))}/>
+          <div className="mb-4 flex items-center gap-2 pt-6"><input type="checkbox" id="activo" checked={form.activo} onChange={e=>f('activo',e.target.checked)} className="w-4 h-4 accent-blue-600"/><label htmlFor="activo" className="text-sm text-gray-700">Empleado activo</label></div>
+        </div>
+        <div className="flex justify-end gap-3"><Btn variant="outline" onClick={()=>setModal(null)}>Cancelar</Btn><Btn onClick={saveEdit} disabled={saving}>{saving?'Guardando...':'Guardar'}</Btn></div>
+      </Modal>}
+
+      {modal==='perms'&&<Modal title={`Permisos — ${sel?.nombre}`} onClose={()=>setModal(null)}>
+        <p className="text-sm text-gray-500 mb-4">Módulos a los que tiene acceso:</p>
+        <div className="space-y-2">
+          {PERMS.map(p=><label key={p.key} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-100"><span className="text-sm font-medium text-gray-700">{p.label}</span><input type="checkbox" checked={form[p.key]||false} onChange={e=>f(p.key,e.target.checked)} className="w-4 h-4 accent-blue-600"/></label>)}
+        </div>
+        <div className="flex justify-end gap-3 mt-5"><Btn variant="outline" onClick={()=>setModal(null)}>Cancelar</Btn><Btn onClick={savePerms} disabled={saving}>{saving?'Guardando...':'Guardar permisos'}</Btn></div>
+      </Modal>}
+
+      {modal==='pwd'&&<Modal title={`Cambiar Contraseña — ${sel?.nombre}`} onClose={()=>setModal(null)}>
+        <Field label="Nueva contraseña" type="password" value={pwdForm.nueva} onChange={e=>setPwdForm(p=>({...p,nueva:e.target.value}))} placeholder="Mínimo 6 caracteres"/>
+        <Field label="Confirmar contraseña" type="password" value={pwdForm.confirma} onChange={e=>setPwdForm(p=>({...p,confirma:e.target.value}))}/>
+        <div className="flex justify-end gap-3"><Btn variant="outline" onClick={()=>setModal(null)}>Cancelar</Btn><Btn onClick={savePwd} disabled={saving}>{saving?'Guardando...':'Cambiar'}</Btn></div>
+      </Modal>}
+    </div>
+  );
+};
+
+// ─── CLIENTES ─────────────────────────────────────────────────
+const Clientes = () => {
+  const [rows,setRows]=useState([]); const [proyectos,setProyectos]=useState([]);
+  const [loading,setLoading]=useState(true); const [modal,setModal]=useState(false);
+  const [sel,setSel]=useState(null); const [form,setForm]=useState({});
+  const [alert,setAlert]=useState(null); const [saving,setSaving]=useState(false); const [search,setSearch]=useState('');
+
+  const load = useCallback(async()=>{setLoading(true);const[c,p]=await Promise.all([sb.from('clientes').select('*').order('empresa'),sb.from('proyectos').select('id,nombre,estatus,cliente_id')]);setRows(c.data||[]);setProyectos(p.data||[]);setLoading(false);},[]);
+  useEffect(()=>{load();},[load]);
+
+  const f=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const openAdd=()=>{setForm({nombre:'',empresa:'',email:'',telefono:''});setSel(null);setModal(true);};
+  const openEdit=r=>{setForm({...r});setSel(r);setModal(true);};
+  const save=async()=>{
+    if(!form.nombre||!form.empresa){setAlert({msg:'Nombre y empresa son obligatorios.',type:'error'});return;}
+    setSaving(true);
+    const data={nombre:form.nombre,empresa:form.empresa,email:form.email,telefono:form.telefono};
+    const{error}=sel?await sb.from('clientes').update(data).eq('id',sel.id):await sb.from('clientes').insert(data);
+    setSaving(false);if(error){setAlert({msg:'Error: '+error.message,type:'error'});return;}
+    setAlert({msg:sel?'Cliente actualizado.':'Cliente agregado.',type:'success'});setModal(false);load();
+  };
+
+  const eColor={'Planeación':'yellow','En Progreso':'blue','Completado':'green','Pausado':'red'};
+  const filtered=rows.filter(r=>r.nombre.toLowerCase().includes(search.toLowerCase())||r.empresa.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <div className="p-6 fade-in">
+      <div className="flex justify-between items-center mb-5">
+        <div><h2 className="text-base font-semibold text-gray-800">Clientes</h2><p className="text-xs text-gray-500 mt-0.5">{rows.length} registrados</p></div>
+        <div className="flex gap-3">
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar..." className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none w-44"/>
+          <button onClick={openAdd} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm rounded-lg font-medium">+ Agregar Cliente</button>
+        </div>
+      </div>
+      {alert&&<Alert msg={alert.msg} type={alert.type} onClose={()=>setAlert(null)}/>}
+      {loading?<Spinner/>:<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {filtered.length===0?<div className="col-span-3"><Empty icon="🤝" title="Sin clientes registrados" desc="Usa el botón Agregar Cliente"/></div>
+        :filtered.map(r=>{
+          const pc=proyectos.filter(p=>p.cliente_id===r.id);
+          return <div key={r.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+            <div className="flex justify-between items-start mb-3">
+              <div><div className="font-semibold text-gray-800">{r.nombre}</div><div className="text-sm text-brand font-medium">{r.empresa}</div></div>
+              <button onClick={()=>openEdit(r)} className="text-gray-300 hover:text-brand">✏️</button>
+            </div>
+            <div className="text-xs text-gray-500 space-y-1 mb-3">{r.email&&<div>📧 {r.email}</div>}{r.telefono&&<div>📱 {r.telefono}</div>}</div>
+            <div className="border-t border-gray-50 pt-3"><div className="text-xs text-gray-400 mb-1.5">Proyectos:</div><div className="flex flex-wrap gap-1">{pc.length===0?<span className="text-xs text-gray-300">Sin proyectos</span>:pc.map(p=><Badge key={p.id} color={eColor[p.estatus]||'gray'}>{p.nombre}</Badge>)}</div></div>
+          </div>;
+        })}
+      </div>}
+      {modal&&<Modal title={sel?'Editar Cliente':'Agregar Cliente'} onClose={()=>setModal(false)}>
+        <Field label="Nombre del contacto *" value={form.nombre} onChange={e=>f('nombre',e.target.value)}/>
+        <Field label="Empresa / Razón social *" value={form.empresa} onChange={e=>f('empresa',e.target.value)}/>
+        <Field label="Correo electrónico" type="email" value={form.email} onChange={e=>f('email',e.target.value)}/>
+        <Field label="Teléfono" value={form.telefono} onChange={e=>f('telefono',e.target.value)}/>
+        <div className="flex justify-end gap-3"><Btn variant="outline" onClick={()=>setModal(false)}>Cancelar</Btn><button onClick={save} disabled={saving} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm rounded-lg font-medium disabled:opacity-50">{saving?'Guardando...':'Guardar'}</button></div>
+      </Modal>}
+    </div>
+  );
+};
+
+// ─── PROVEEDORES ──────────────────────────────────────────────
+const Proveedores = () => {
+  const [rows,setRows]=useState([]); const [loading,setLoading]=useState(true);
+  const [modal,setModal]=useState(false); const [sel,setSel]=useState(null);
+  const [form,setForm]=useState({}); const [alert,setAlert]=useState(null);
+  const [saving,setSaving]=useState(false); const [cat,setCat]=useState('');
+  const CATS=['Materiales','Servicios','Equipos','Consultoría','Transporte','Otros'];
+  const catColor={Materiales:'blue',Servicios:'green',Equipos:'orange',Consultoría:'purple',Transporte:'yellow',Otros:'gray'};
+
+  const load=useCallback(async()=>{setLoading(true);const{data}=await sb.from('proveedores').select('*').order('nombre');setRows(data||[]);setLoading(false);},[]);
+  useEffect(()=>{load();},[load]);
+
+  const f=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const openAdd=()=>{setForm({nombre:'',contacto:'',email:'',telefono:'',categoria:'Materiales'});setSel(null);setModal(true);};
+  const openEdit=r=>{setForm({...r});setSel(r);setModal(true);};
+  const save=async()=>{
+    if(!form.nombre){setAlert({msg:'El nombre es obligatorio.',type:'error'});return;}
+    setSaving(true);const data={nombre:form.nombre,contacto:form.contacto,email:form.email,telefono:form.telefono,categoria:form.categoria};
+    const{error}=sel?await sb.from('proveedores').update(data).eq('id',sel.id):await sb.from('proveedores').insert(data);
+    setSaving(false);if(error){setAlert({msg:'Error: '+error.message,type:'error'});return;}
+    setAlert({msg:sel?'Proveedor actualizado.':'Proveedor agregado.',type:'success'});setModal(false);load();
+  };
+  const filtered=cat?rows.filter(r=>r.categoria===cat):rows;
+
+  return (
+    <div className="p-6 fade-in">
+      <div className="flex justify-between items-center mb-5">
+        <div><h2 className="text-base font-semibold text-gray-800">Proveedores</h2><p className="text-xs text-gray-500 mt-0.5">{rows.length} registrados</p></div>
+        <div className="flex gap-3">
+          <select value={cat} onChange={e=>setCat(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none">
+            <option value="">Todas las categorías</option>{CATS.map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+          <button onClick={openAdd} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 text-sm rounded-lg font-medium">+ Agregar Proveedor</button>
+        </div>
+      </div>
+      {alert&&<Alert msg={alert.msg} type={alert.type} onClose={()=>setAlert(null)}/>}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {loading?<Spinner/>:filtered.length===0?<Empty icon="📦" title="Sin proveedores"/>:(
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50 border-b border-gray-100">{['Empresa','Contacto','Correo / Tel','Categoría','Acciones'].map(h=><th key={h} className="text-left px-5 py-3 text-gray-500 font-medium text-xs">{h}</th>)}</tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {filtered.map(r=><tr key={r.id} className="hover:bg-gray-50/50">
+                  <td className="px-5 py-3 font-medium text-gray-800">{r.nombre}</td>
+                  <td className="px-5 py-3 text-gray-600">{r.contacto||'—'}</td>
+                  <td className="px-5 py-3 text-gray-500 text-xs">{r.email&&<div>{r.email}</div>}{r.telefono&&<div>{r.telefono}</div>}{!r.email&&!r.telefono&&'—'}</td>
+                  <td className="px-5 py-3"><Badge color={catColor[r.categoria]||'gray'}>{r.categoria}</Badge></td>
+                  <td className="px-5 py-3"><button onClick={()=>openEdit(r)} className="text-xs text-brand hover:underline">Editar</button></td>
+                </tr>)}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      {modal&&<Modal title={sel?'Editar Proveedor':'Agregar Proveedor'} onClose={()=>setModal(false)}>
+        <Field label="Nombre de empresa *" value={form.nombre} onChange={e=>f('nombre',e.target.value)}/>
+        <Field label="Contacto" value={form.contacto} onChange={e=>f('contacto',e.target.value)}/>
+        <Field label="Correo" type="email" value={form.email} onChange={e=>f('email',e.target.value)}/>
+        <Field label="Teléfono" value={form.telefono} onChange={e=>f('telefono',e.target.value)}/>
+        <Sel label="Categoría" value={form.categoria} onChange={e=>f('categoria',e.target.value)} options={CATS.map(c=>({value:c,label:c}))}/>
+        <div className="flex justify-end gap-3"><Btn variant="outline" onClick={()=>setModal(false)}>Cancelar</Btn><button onClick={save} disabled={saving} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 text-sm rounded-lg font-medium disabled:opacity-50">{saving?'Guardando...':'Guardar'}</button></div>
+      </Modal>}
+    </div>
+  );
+};
+
+// ─── PROYECTOS ────────────────────────────────────────────────
+const Proyectos = () => {
+  const [proyectos,setProyectos]=useState([]); const [clientes,setClientes]=useState([]);
+  const [proveedores,setProveedores]=useState([]); const [requisiciones,setRequisiciones]=useState([]);
+  const [loading,setLoading]=useState(true); const [modal,setModal]=useState(null);
+  const [selP,setSelP]=useState(null); const [form,setForm]=useState({});
+  const [rForm,setRForm]=useState({}); const [alert,setAlert]=useState(null);
+  const [saving,setSaving]=useState(false); const [filtro,setFiltro]=useState('');
+  const ESTATUS=['Planeación','En Progreso','Completado','Pausado'];
+  const REQ_EST=['Pendiente','Aprobada','Pagada','Rechazada'];
+  const eColor={'Planeación':'yellow','En Progreso':'blue','Completado':'green','Pausado':'red'};
+  const rColor={'Pendiente':'yellow','Aprobada':'blue','Pagada':'green','Rechazada':'red'};
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const[p,c,pr,r]=await Promise.all([sb.from('proyectos').select('*').order('created_at',{ascending:false}),sb.from('clientes').select('id,nombre,empresa').order('empresa'),sb.from('proveedores').select('id,nombre').order('nombre'),sb.from('requisiciones').select('*').order('created_at',{ascending:false})]);
+    setProyectos(p.data||[]);setClientes(c.data||[]);setProveedores(pr.data||[]);setRequisiciones(r.data||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{load();},[load]);
+
+  const f=(k,v)=>setForm(p=>({...p,[k]:v}));
+  const openAdd=()=>{setForm({nombre:'',cliente_id:'',fecha_inicio:'',fecha_fin:'',estatus:'Planeación',presupuesto:'',avance:0,notas:''});setModal('add');};
+  const openEdit=p=>{setForm({...p,presupuesto:String(p.presupuesto)});setSelP(p);setModal('edit');};
+  const openReqs=p=>{setSelP(p);setRForm({descripcion:'',monto:'',proveedor_id:'',estatus:'Pendiente',fecha:new Date().toISOString().slice(0,10)});setModal('reqs');};
+
+  const saveProy=async()=>{
+    if(!form.nombre){setAlert({msg:'El nombre es obligatorio.',type:'error'});return;}
+    setSaving(true);
+    const data={nombre:form.nombre,cliente_id:form.cliente_id||null,fecha_inicio:form.fecha_inicio||null,fecha_fin:form.fecha_fin||null,estatus:form.estatus,presupuesto:Number(form.presupuesto)||0,avance:Number(form.avance)||0,notas:form.notas};
+    const{error}=modal==='add'?await sb.from('proyectos').insert(data):await sb.from('proyectos').update(data).eq('id',selP.id);
+    setSaving(false);if(error){setAlert({msg:'Error: '+error.message,type:'error'});return;}
+    setAlert({msg:modal==='add'?'Proyecto creado.':'Proyecto actualizado.',type:'success'});setModal(null);load();
+  };
+  const saveReq=async()=>{
+    if(!rForm.descripcion){setAlert({msg:'La descripción es obligatoria.',type:'error'});return;}
+    setSaving(true);
+    const{error}=await sb.from('requisiciones').insert({proyecto_id:selP.id,descripcion:rForm.descripcion,monto:Number(rForm.monto)||0,proveedor_id:rForm.proveedor_id||null,estatus:rForm.estatus,fecha:rForm.fecha});
+    setSaving(false);if(error){setAlert({msg:'Error: '+error.message,type:'error'});return;}
+    setRForm({descripcion:'',monto:'',proveedor_id:'',estatus:'Pendiente',fecha:new Date().toISOString().slice(0,10)});load();
+  };
+  const updateReqEst=async(id,estatus)=>{await sb.from('requisiciones').update({estatus}).eq('id',id);load();};
+  const filtered=filtro?proyectos.filter(p=>p.estatus===filtro):proyectos;
+
+  return (
+    <div className="p-6 fade-in">
+      <div className="flex justify-between items-center mb-5">
+        <div><h2 className="text-base font-semibold text-gray-800">Control de Proyectos</h2><p className="text-xs text-gray-500 mt-0.5">{proyectos.length} proyectos · {proyectos.filter(p=>p.estatus==='En Progreso').length} en progreso</p></div>
+        <div className="flex gap-3">
+          <select value={filtro} onChange={e=>setFiltro(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none">
+            <option value="">Todos los estatus</option>{ESTATUS.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+          <Btn onClick={openAdd}>+ Nuevo Proyecto</Btn>
+        </div>
+      </div>
+      {alert&&<Alert msg={alert.msg} type={alert.type} onClose={()=>setAlert(null)}/>}
+      {loading?<Spinner/>:filtered.length===0?<Empty icon="📋" title="Sin proyectos"/>:(
+        <div className="space-y-3">
+          {filtered.map(p=>{
+            const cli=clientes.find(c=>c.id===p.cliente_id);
+            const reqs=requisiciones.filter(r=>r.proyecto_id===p.id);
+            const reqM=reqs.reduce((s,r)=>s+Number(r.monto),0);
+            const disp=Number(p.presupuesto)-reqM;
+            return <div key={p.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <div className="font-semibold text-gray-800 text-base">{p.nombre}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{cli?`Cliente: ${cli.empresa}`:'Sin cliente'} · {fmtDate(p.fecha_inicio)} → {fmtDate(p.fecha_fin)}</div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Badge color={eColor[p.estatus]||'gray'}>{p.estatus}</Badge>
+                  <button onClick={()=>openEdit(p)} className="text-xs text-brand hover:underline">Editar</button>
+                  <button onClick={()=>openReqs(p)} className="text-xs text-orange-500 hover:underline">Requisiciones ({reqs.length})</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-sm mb-3">
+                <div><div className="text-xs text-gray-400 mb-0.5">Presupuesto</div><div className="font-medium">{fmt(p.presupuesto)}</div></div>
+                <div><div className="text-xs text-gray-400 mb-0.5">Requisicionado</div><div className="font-medium">{fmt(reqM)}</div></div>
+                <div><div className="text-xs text-gray-400 mb-0.5">Disponible</div><div className={`font-medium ${disp<0?'text-red-500':'text-green-600'}`}>{fmt(disp)}</div></div>
+              </div>
+              <div>
+                <div className="flex justify-between text-xs text-gray-400 mb-1"><span>Avance</span><span className="font-medium text-gray-600">{p.avance}%</span></div>
+                <div className="w-full bg-gray-100 rounded-full h-2"><div className="bg-brand h-2 rounded-full" style={{width:`${p.avance}%`}}/></div>
+              </div>
+            </div>;
+          })}
+        </div>
+      )}
+
+      {(modal==='add'||modal==='edit')&&<Modal title={modal==='add'?'Nuevo Proyecto':'Editar Proyecto'} onClose={()=>setModal(null)} size="lg">
+        <Field label="Nombre del proyecto *" value={form.nombre} onChange={e=>f('nombre',e.target.value)}/>
+        <div className="grid grid-cols-2 gap-x-4">
+          <Sel label="Cliente" value={form.cliente_id||''} onChange={e=>f('cliente_id',e.target.value)} options={[{value:'',label:'— Sin cliente —'},...clientes.map(c=>({value:c.id,label:c.empresa}))]}/>
+          <Sel label="Estatus" value={form.estatus} onChange={e=>f('estatus',e.target.value)} options={ESTATUS.map(s=>({value:s,label:s}))}/>
+          <Field label="Fecha inicio" type="date" value={form.fecha_inicio||''} onChange={e=>f('fecha_inicio',e.target.value)}/>
+          <Field label="Fecha fin" type="date" value={form.fecha_fin||''} onChange={e=>f('fecha_fin',e.target.value)}/>
+          <Field label="Presupuesto (MXN)" type="number" value={form.presupuesto} onChange={e=>f('presupuesto',e.target.value)} placeholder="0"/>
+          <Field label="Avance (%)" type="number" min="0" max="100" value={form.avance} onChange={e=>f('avance',e.target.value)}/>
+        </div>
+        <div className="mb-4"><label className="block text-sm font-medium text-gray-700 mb-1">Notas</label><textarea value={form.notas} onChange={e=>f('notas',e.target.value)} rows={2} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"/></div>
+        <div className="flex justify-end gap-3"><Btn variant="outline" onClick={()=>setModal(null)}>Cancelar</Btn><Btn onClick={saveProy} disabled={saving}>{saving?'Guardando...':'Guardar'}</Btn></div>
+      </Modal>}
+
+      {modal==='reqs'&&selP&&<Modal title={`Requisiciones — ${selP.nombre}`} onClose={()=>setModal(null)} size="xl">
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">Nueva Requisición</h4>
+          <Field label="Descripción *" value={rForm.descripcion} onChange={e=>setRForm(p=>({...p,descripcion:e.target.value}))}/>
+          <div className="grid grid-cols-3 gap-x-3">
+            <Sel label="Proveedor" value={rForm.proveedor_id} onChange={e=>setRForm(p=>({...p,proveedor_id:e.target.value}))} options={[{value:'',label:'— Sin proveedor —'},...proveedores.map(p=>({value:p.id,label:p.nombre}))]}/>
+            <Field label="Monto (MXN)" type="number" value={rForm.monto} onChange={e=>setRForm(p=>({...p,monto:e.target.value}))} placeholder="0"/>
+            <Field label="Fecha" type="date" value={rForm.fecha} onChange={e=>setRForm(p=>({...p,fecha:e.target.value}))}/>
+          </div>
+          <div className="flex justify-end"><Btn onClick={saveReq} disabled={saving} size="sm">{saving?'Agregando...':'Agregar'}</Btn></div>
+        </div>
+        {(()=>{const reqs=requisiciones.filter(r=>r.proyecto_id===selP.id);return reqs.length===0?<Empty icon="📄" title="Sin requisiciones"/>:(
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50">{['Descripción','Proveedor','Monto','Fecha','Estatus'].map(h=><th key={h} className="text-left px-3 py-2 text-xs text-gray-500 font-medium">{h}</th>)}</tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {reqs.map(r=>{const pv=proveedores.find(p=>p.id===r.proveedor_id);return<tr key={r.id} className="hover:bg-gray-50/50">
+                  <td className="px-3 py-2 font-medium text-gray-800 max-w-xs truncate">{r.descripcion}</td>
+                  <td className="px-3 py-2 text-gray-600">{pv?.nombre||'—'}</td>
+                  <td className="px-3 py-2 font-medium">{fmt(r.monto)}</td>
+                  <td className="px-3 py-2 text-gray-500">{fmtDate(r.fecha)}</td>
+                  <td className="px-3 py-2"><select value={r.estatus} onChange={e=>updateReqEst(r.id,e.target.value)} className="text-xs border border-gray-200 rounded px-1 py-0.5 bg-white">{REQ_EST.map(s=><option key={s} value={s}>{s}</option>)}</select></td>
+                </tr>;})}
+              </tbody>
+            </table>
+          </div>
+        );})()}
+      </Modal>}
+    </div>
+  );
+};
+
+// ─── VENTAS ───────────────────────────────────────────────────
+const Ventas = () => {
+  const [proyectos,setProyectos]=useState([]); const [clientes,setClientes]=useState([]);
+  const [requisiciones,setRequisiciones]=useState([]); const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const load=async()=>{setLoading(true);const[p,c,r]=await Promise.all([sb.from('proyectos').select('*'),sb.from('clientes').select('id,nombre,empresa'),sb.from('requisiciones').select('proyecto_id,monto,estatus')]);setProyectos(p.data||[]);setClientes(c.data||[]);setRequisiciones(r.data||[]);setLoading(false);};
+    load();
+  },[]);
+
+  if(loading) return <div className="p-6"><Spinner/></div>;
+  const totalP=proyectos.reduce((s,p)=>s+Number(p.presupuesto),0);
+  const totalR=requisiciones.reduce((s,r)=>s+Number(r.monto),0);
+  const maxP=Math.max(...proyectos.map(p=>Number(p.presupuesto)),1);
+  const eColor={'Planeación':'yellow','En Progreso':'blue','Completado':'green','Pausado':'red'};
+  const porCliente=clientes.map(c=>({...c,total:proyectos.filter(p=>p.cliente_id===c.id).reduce((s,p)=>s+Number(p.presupuesto),0),count:proyectos.filter(p=>p.cliente_id===c.id).length})).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
+
+  return (
+    <div className="p-6 space-y-5 fade-in">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[{label:'Valor total cartera',val:fmt(totalP),icon:'💰',color:'text-brand'},{label:'Total requisicionado',val:fmt(totalR),icon:'📦',color:'text-orange-600'},{label:'En progreso',val:proyectos.filter(p=>p.estatus==='En Progreso').length,icon:'🔄',color:'text-blue-600'},{label:'Completados',val:proyectos.filter(p=>p.estatus==='Completado').length,icon:'✅',color:'text-green-600'}].map((k,i)=>(
+          <div key={i} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100"><div className="text-2xl mb-2">{k.icon}</div><div className={`text-2xl font-bold ${k.color}`}>{k.val}</div><div className="text-xs text-gray-500 mt-1">{k.label}</div></div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="font-semibold text-gray-700 text-sm mb-4">Presupuesto por Proyecto</h3>
+          {proyectos.length===0?<Empty icon="📊" title="Sin datos"/>:<div className="space-y-3">
+            {proyectos.sort((a,b)=>b.presupuesto-a.presupuesto).map(p=>(
+              <div key={p.id}>
+                <div className="flex justify-between text-xs text-gray-500 mb-1"><span className="truncate max-w-[160px] font-medium text-gray-700">{p.nombre}</span><span>{fmt(p.presupuesto)}</span></div>
+                <div className="w-full bg-gray-100 rounded-full h-5">
+                  <div className="h-5 rounded-full bg-brand flex items-center justify-end pr-2" style={{width:`${(Number(p.presupuesto)/maxP)*100}%`,minWidth:'2rem'}}>
+                    <span className="text-white text-xs font-medium">{totalP>0?Math.round((Number(p.presupuesto)/totalP)*100):0}%</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>}
+        </div>
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="font-semibold text-gray-700 text-sm mb-4">Ventas por Cliente</h3>
+          {porCliente.length===0?<Empty icon="🤝" title="Sin datos"/>:<div className="space-y-3">
+            {porCliente.map(c=><div key={c.id} className="flex items-center justify-between border-b border-gray-50 pb-3 last:border-0">
+              <div><div className="font-medium text-gray-800 text-sm">{c.empresa}</div><div className="text-xs text-gray-400">{c.count} proyecto{c.count!==1?'s':''}</div></div>
+              <div className="text-right"><div className="font-semibold text-gray-800 text-sm">{fmt(c.total)}</div><div className="text-xs text-gray-400">{totalP>0?Math.round((c.total/totalP)*100):0}% del total</div></div>
+            </div>)}
+          </div>}
+        </div>
+      </div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-50"><h3 className="font-semibold text-gray-700 text-sm">Detalle de Proyectos</h3></div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="bg-gray-50 border-b border-gray-100">{['Proyecto','Cliente','Presupuesto','Requisicionado','Disponible','Avance','Estatus'].map(h=><th key={h} className="text-left px-5 py-3 text-gray-500 font-medium text-xs">{h}</th>)}</tr></thead>
+            <tbody className="divide-y divide-gray-50">
+              {proyectos.map(p=>{const cli=clientes.find(c=>c.id===p.cliente_id);const rM=requisiciones.filter(r=>r.proyecto_id===p.id).reduce((s,r)=>s+Number(r.monto),0);const disp=Number(p.presupuesto)-rM;return<tr key={p.id} className="hover:bg-gray-50/50">
+                <td className="px-5 py-3 font-medium text-gray-800">{p.nombre}</td>
+                <td className="px-5 py-3 text-gray-600">{cli?.empresa||'—'}</td>
+                <td className="px-5 py-3">{fmt(p.presupuesto)}</td>
+                <td className="px-5 py-3">{fmt(rM)}</td>
+                <td className={`px-5 py-3 font-medium ${disp<0?'text-red-500':'text-green-600'}`}>{fmt(disp)}</td>
+                <td className="px-5 py-3"><div className="flex items-center gap-2"><div className="w-16 bg-gray-100 rounded-full h-1.5"><div className="bg-brand h-1.5 rounded-full" style={{width:`${p.avance}%`}}/></div><span className="text-xs text-gray-500">{p.avance}%</span></div></td>
+                <td className="px-5 py-3"><Badge color={eColor[p.estatus]||'gray'}>{p.estatus}</Badge></td>
+              </tr>;})}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── APP ──────────────────────────────────────────────────────
+const TITLES = {dashboard:'Dashboard',empleados:'Empleados',clientes:'Clientes',proveedores:'Proveedores',proyectos:'Control de Proyectos',ventas:'Control de Ventas'};
+const PAGES  = {dashboard:Dashboard,empleados:Empleados,clientes:Clientes,proveedores:Proveedores,proyectos:Proyectos,ventas:Ventas};
+
+const App = () => {
+  const [user,setUser] = useState(getSession);
+  const [page,setPage] = useState('dashboard');
+  const login  = u => { setUser(u); setPage('dashboard'); };
+  const logout = () => { clearSession(); setUser(null); };
+  if(!user) return <Login onLogin={login}/>;
+  const Page = PAGES[page]||Dashboard;
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar page={page} setPage={setPage} user={user}/>
+      <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
+        <TopBar title={TITLES[page]||'—'} onLogout={logout}/>
+        <main className="flex-1 overflow-y-auto bg-gray-50"><Page/></main>
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
