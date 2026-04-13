@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>SERTA · Intranet</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','sans-serif']},colors:{navy:{DEFAULT:'#0a1628',mid:'#122040',light:'#1e3a5f'},brand:{DEFAULT:'#1a56db',light:'#3b82f6',pale:'#dbeafe'}}}}}</script>
+  <style>
+    body{font-family:'Inter',sans-serif;}
+    ::-webkit-scrollbar{width:5px;height:5px;}
+    ::-webkit-scrollbar-track{background:#f1f5f9;}
+    ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px;}
+    .fade{animation:fadeIn .15s ease;}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+    .modal-bg{background:rgba(0,0,0,.45);}
+  </style>
+</head>
+<body class="bg-gray-50">
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useCallback,useMemo}=React;
+
+const sb=supabase.createClient(
+  'https://yxrjwngkrjhzujtgdzwv.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4cmp3bmdrcmpoenVqdGdkend2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0Mjk0NzMsImV4cCI6MjA4OTAwNTQ3M30.V79Anw5DYvlBGKOEejUSKZaYPsauT4XRbMmckvO7go0'
+);
+
+const fmt=n=>new Intl.NumberFormat('es-MX',{style:'currency',currency:'MXN',minimumFractionDigits:0}).format(n||0);
+const fmtD=d=>d?new Date(d+'T12:00:00').toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'}):'—';
+const SK='serta_user';
+const getS=()=>{try{return JSON.parse(sessionStorage.getItem(SK));}catch{return null;}};
+const anioActual=new Date().getFullYear();
+
+// ── Componentes base ──────────────────────────────────────────
+const Btn=({children,onClick,color='blue',size='md',disabled,type='button',className=''})=>{
+  const c=color==='blue'?'bg-brand hover:bg-brand-light text-white':color==='red'?'bg-red-600 hover:bg-red-700 text-white':color==='green'?'bg-green-600 hover:bg-green-700 text-white':color==='gray'?'bg-gray-200 hover:bg-gray-300 text-gray-700':'bg-white border border-gray-300 hover:bg-gray-50 text-gray-700';
+  const s=size==='sm'?'px-3 py-1 text-xs':'px-4 py-2 text-sm';
+  return <button type={type} onClick={onClick} disabled={disabled} className={`${c} ${s} rounded-lg font-medium transition disabled:opacity-50 ${className}`}>{children}</button>;
+};
+const Badge=({text,color='gray'})=>{
+  const c=color==='green'?'bg-green-100 text-green-700':color==='red'?'bg-red-100 text-red-700':color==='blue'?'bg-blue-100 text-blue-700':color==='yellow'?'bg-yellow-100 text-yellow-700':color==='purple'?'bg-purple-100 text-purple-700':color==='orange'?'bg-orange-100 text-orange-700':'bg-gray-100 text-gray-600';
+  return <span className={`${c} px-2 py-0.5 rounded-full text-xs font-medium`}>{text}</span>;
+};
+const Input=({label,value,onChange,type='text',required,placeholder,disabled,className=''})=>(
+  <div className={`flex flex-col gap-1 ${className}`}>
+    {label&&<label className="text-xs font-medium text-gray-600">{label}{required&&<span className="text-red-500 ml-0.5">*</span>}</label>}
+    <input type={type} value={value||''} onChange={e=>onChange(e.target.value)} required={required} placeholder={placeholder} disabled={disabled}
+      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 disabled:bg-gray-50"/>
+  </div>
+);
+const Sel=({label,value,onChange,options,required,className=''})=>(
+  <div className={`flex flex-col gap-1 ${className}`}>
+    {label&&<label className="text-xs font-medium text-gray-600">{label}{required&&<span className="text-red-500 ml-0.5">*</span>}</label>}
+    <select value={value||''} onChange={e=>onChange(e.target.value)} required={required} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white">
+      {options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  </div>
+);
+const Textarea=({label,value,onChange,rows=3,placeholder=''})=>(
+  <div className="flex flex-col gap-1">
+    {label&&<label className="text-xs font-medium text-gray-600">{label}</label>}
+    <textarea value={value||''} onChange={e=>onChange(e.target.value)} rows={rows} placeholder={placeholder}
+      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 resize-none"/>
+  </div>
+);
+const Modal=({title,onClose,children,size='md'})=>{
+  const w=size==='lg'?'max-w-3xl':size==='xl'?'max-w-5xl':'max-w-lg';
+  return(
+    <div className="modal-bg fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div className={`bg-white rounded-2xl shadow-2xl w-full ${w} max-h-[92vh] flex flex-col fade`}>
+        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
+          <h2 className="font-semibold text-gray-800 text-lg">{title}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-4">{children}</div>
+      </div>
+    </div>
+  );
+};
+const StatCard=({title,value,sub,color,icon})=>{
+  const g=color==='blue'?'from-blue-500 to-blue-600':color==='green'?'from-green-500 to-green-600':color==='purple'?'from-purple-500 to-purple-600':color==='orange'?'from-orange-500 to-orange-600':'from-gray-500 to-gray-600';
+  return(<div className={`bg-gradient-to-br ${g} text-white rounded-2xl p-5 shadow`}><div className="flex items-start justify-between"><div><p className="text-sm opacity-80">{title}</p><p className="text-3xl font-bold mt-1">{value}</p>{sub&&<p className="text-xs opacity-70 mt-1">{sub}</p>}</div><span className="text-3xl opacity-60">{icon}</span></div></div>);
+};
+const Empty=({msg='Sin registros'})=>(<div className="text-center py-16 text-gray-400"><div className="text-5xl mb-3">📋</div><p className="text-sm">{msg}</p></div>);
+const Spin=()=>(<div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin"/></div>);
+
+// Avatar con foto o inicial
+const Avatar=({nombre,foto_url,size='md'})=>{
+  const s=size==='lg'?'w-20 h-20 text-2xl':size==='xl'?'w-28 h-28 text-4xl':'w-8 h-8 text-xs';
+  if(foto_url) return <img src={foto_url} alt={nombre} className={`${s} rounded-full object-cover border-2 border-white shadow`}/>;
+  return(<div className={`${s} bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0`}><span className="text-blue-600 font-bold">{(nombre||'?').charAt(0).toUpperCase()}</span></div>);
+};
+
+// LOGIN ─────────────────────────────────────────────────────────
+function LoginPage({onLogin}){
+  const[email,setEmail]=useState('');
+  const[pass,setPass]=useState('');
+  const[err,setErr]=useState('');
+  const[loading,setLoading]=useState(false);
+  const submit=async e=>{
+    e.preventDefault();setErr('');setLoading(true);
+    try{
+      const{data,error}=await sb.rpc('fn_login',{p_email:email.trim(),p_password:pass});
+      if(error)throw error;
+      if(!data||!data.length){setErr('Credenciales incorrectas');setLoading(false);return;}
+      sessionStorage.setItem(SK,JSON.stringify(data[0]));
+      onLogin(data[0]);
+    }catch(e){setErr('Error de conexión. Intenta de nuevo.');setLoading(false);}
+  };
+  return(
+    <div className="min-h-screen bg-gradient-to-br from-navy to-navy-light flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 fade">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-brand rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg"><span className="text-white font-bold text-2xl">S</span></div>
+          <h1 className="text-xl font-bold text-gray-800">SERTA</h1>
+          <p className="text-xs text-gray-500 mt-1">Sistema de Gestión Interna</p>
+        </div>
+        <form onSubmit={submit} className="space-y-4">
+          <Input label="Correo electrónico" type="email" value={email} onChange={setEmail} required placeholder="usuario@serta.com.mx"/>
+          <Input label="Contraseña" type="password" value={pass} onChange={setPass} required placeholder="••••••••"/>
+          {err&&<p className="text-red-600 text-xs bg-red-50 px-3 py-2 rounded-lg">{err}</p>}
+          <Btn type="submit" disabled={loading} className="w-full justify-center">{loading?'Iniciando sesión...':'Iniciar Sesión'}</Btn>
+        </form>
+        <p className="text-center text-xs text-gray-400 mt-6">© {new Date().getFullYear()} SERTA de México</p>
+      </div>
+    </div>
+  );
+}
+
+// SIDEBAR ───────────────────────────────────────────────────────
+const MODS=[
+  {id:'dashboard',label:'Dashboard',icon:'📊',perm:null},
+  {id:'rrhh',label:'RR.HH.',icon:'👥',perm:'perm_empleados'},
+  {id:'ventas',label:'Ventas/CRM',icon:'💼',perm:'perm_clientes'},
+  {id:'finanzas',label:'Finanzas',icon:'💰',perm:'perm_finanzas'},
+  {id:'proyectos',label:'Proyectos',icon:'🏗️',perm:'perm_proyectos'},
+  {id:'calidad',label:'Calidad',icon:'✅',perm:'perm_calidad'},
+];
+function Sidebar({user,active,setActive,onLogout}){
+  return(
+    <aside className="w-60 bg-navy min-h-screen flex flex-col flex-shrink-0">
+      <div className="px-5 py-5 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-brand rounded-xl flex items-center justify-center shadow"><span className="text-white font-bold text-base">S</span></div>
+          <div><p className="text-white font-semibold text-sm">SERTA</p><p className="text-white/40 text-xs">Gestión Interna</p></div>
+        </div>
+      </div>
+      <nav className="flex-1 px-3 py-4 space-y-1">
+        {MODS.map(m=>{
+          const ok=!m.perm||user.rol==='Administrador'||user[m.perm];
+          if(!ok)return null;
+          const on=active===m.id;
+          return(<button key={m.id} onClick={()=>setActive(m.id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition ${on?'bg-brand text-white font-medium':'text-white/60 hover:bg-white/10 hover:text-white'}`}><span className="text-base">{m.icon}</span><span>{m.label}</span></button>);
+        })}
+      </nav>
+      <div className="px-4 py-4 border-t border-white/10">
+        <div className="flex items-center gap-2 mb-3">
+          <Avatar nombre={user.nombre} foto_url={user.foto_url} size="sm"/>
+          <div className="overflow-hidden"><p className="text-white text-xs font-medium truncate">{user.nombre}</p><p className="text-white/40 text-xs">{user.rol}</p></div>
+        </div>
+        <button onClick={onLogout} className="text-white/50 hover:text-white text-xs transition">← Cerrar sesión</button>
+      </div>
+    </aside>
+  );
+}
+
+// DASHBOARD ─────────────────────────────────────────────────────
+function Dashboard({user}){
+  const[s,setS]=useState({emp:0,vac:0,proy:0,cli:0,cumples:[]});
+  useEffect(()=>{
+    (async()=>{
+      const hoy=new Date();
+      const mes=String(hoy.getMonth()+1).padStart(2,'0');
+      const[e,v,p,c,cb]=await Promise.all([
+        sb.from('empleados').select('id',{count:'exact',head:true}).eq('activo',true),
+        sb.from('vacaciones').select('id',{count:'exact',head:true}).eq('estatus','Pendiente'),
+        sb.from('proyectos').select('id',{count:'exact',head:true}).eq('estatus','En Progreso'),
+        sb.from('clientes').select('id',{count:'exact',head:true}).eq('activo',true),
+        sb.from('empleados').select('nombre,fecha_nacimiento,foto_url').eq('activo',true).not('fecha_nacimiento','is',null),
+      ]);
+      const cumples=(cb.data||[]).filter(e=>{
+        if(!e.fecha_nacimiento)return false;
+        const m=e.fecha_nacimiento.split('-')[1];
+        return m===mes;
+      });
+      setS({emp:e.count||0,vac:v.count||0,proy:p.count||0,cli:c.count||0,cumples});
+    })();
+  },[]);
+  const h=new Date().getHours();
+  const sal=h<12?'Buenos días':h<18?'Buenas tardes':'Buenas noches';
+  return(
+    <div className="p-6 fade">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">{sal}, {user.nombre.split(' ')[0]} 👋</h1>
+        <p className="text-gray-500 text-sm mt-1">{new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard title="Empleados activos" value={s.emp} icon="👥" color="blue"/>
+        <StatCard title="Vacaciones pendientes" value={s.vac} icon="🏖️" color="orange"/>
+        <StatCard title="Proyectos en curso" value={s.proy} icon="🏗️" color="purple"/>
+        <StatCard title="Clientes activos" value={s.cli} icon="🤝" color="green"/>
+      </div>
+      {s.cumples.length>0&&(
+        <div className="bg-gradient-to-r from-pink-50 to-orange-50 border border-pink-200 rounded-2xl p-4 mb-6">
+          <p className="font-semibold text-pink-700 mb-2">🎂 Cumpleaños este mes</p>
+          <div className="flex flex-wrap gap-3">
+            {s.cumples.map((e,i)=>(
+              <div key={i} className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 shadow-sm">
+                <Avatar nombre={e.nombre} foto_url={e.foto_url}/>
+                <div>
+                  <p className="text-sm font-medium text-gray-800">{e.nombre}</p>
+                  <p className="text-xs text-gray-500">{fmtD(e.fecha_nacimiento)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+        <h2 className="font-semibold text-gray-700 mb-4">Módulos disponibles</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {MODS.filter(m=>m.id!=='dashboard').map(m=>{const ok=!m.perm||user.rol==='Administrador'||user[m.perm];return ok?<div key={m.id} className="bg-gray-50 rounded-xl p-4 border border-gray-100"><div className="text-2xl mb-1">{m.icon}</div><p className="font-medium text-sm text-gray-700">{m.label}</p></div>:null;})}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RR.HH. — EMPLEADOS
+// ═══════════════════════════════════════════════════════════════
+function EmpleadosTab({user}){
+  const[data,setData]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[search,setSearch]=useState('');
+  const[fDept,setFDept]=useState('');
+  const[modal,setModal]=useState(null);
+  const[sel,setSel]=useState(null);
+  const[form,setForm]=useState({});
+  const[saving,setSaving]=useState(false);
+  const[msg,setMsg]=useState('');
+  const isAdmin=user.rol==='Administrador';
+  const puedeCrear=user.perm_empleados||isAdmin;
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const{data:d}=await sb.from('empleados').select('*').order('nombre');
+    setData(d||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{load();},[load]);
+
+  const depts=[...new Set((data||[]).map(e=>e.departamento).filter(Boolean))].sort();
+  const filt=useMemo(()=>(data||[]).filter(e=>{
+    const q=search.toLowerCase();
+    return(!q||(e.nombre||'').toLowerCase().includes(q)||(e.email||'').toLowerCase().includes(q)||(e.puesto||'').toLowerCase().includes(q))&&(!fDept||e.departamento===fDept);
+  }),[data,search,fDept]);
+
+  const ef={nombre:'',email:'',password:'',puesto:'',departamento:'',rol:'Analista',telefono:'',tipo_contrato:'Indefinido',salario:'',dias_vacaciones:6,fecha_ingreso:'',fecha_nacimiento:'',foto_url:'',notas:'',activo:true,
+    perm_empleados:false,perm_clientes:false,perm_proveedores:false,perm_proyectos:false,perm_ventas:false,perm_finanzas:false,perm_calidad:false,
+    perm_alta_empleados:false,perm_aprobar_vacaciones:false,perm_ver_salarios:false,perm_autorizar_proyectos:false,perm_asignar_pm:false,perm_requisiciones:false,perm_aprobar_req:false,perm_ver_comisiones:false};
+
+  const save=async e=>{
+    e.preventDefault();setSaving(true);setMsg('');
+    try{
+      if(modal==='nuevo'){
+        const{error}=await sb.rpc('fn_crear_empleado',{
+          p_nombre:form.nombre,p_email:form.email,p_password:form.password||'Serta2026!',
+          p_departamento:form.departamento,p_rol:form.rol,p_puesto:form.puesto,
+          p_telefono:form.telefono,p_salario:parseFloat(form.salario)||0,
+          p_perm_empleados:!!form.perm_empleados,p_perm_clientes:!!form.perm_clientes,
+          p_perm_proveedores:!!form.perm_proveedores,p_perm_proyectos:!!form.perm_proyectos,
+          p_perm_ventas:!!form.perm_ventas,p_perm_finanzas:!!form.perm_finanzas,p_perm_calidad:!!form.perm_calidad});
+        if(error)throw error;
+        // Update extra fields
+        const{data:nw}=await sb.from('empleados').select('id').eq('email',form.email).single();
+        if(nw){
+          await sb.from('empleados').update({
+            fecha_ingreso:form.fecha_ingreso||null,fecha_nacimiento:form.fecha_nacimiento||null,foto_url:form.foto_url||'',notas:form.notas||'',
+            perm_alta_empleados:!!form.perm_alta_empleados,perm_aprobar_vacaciones:!!form.perm_aprobar_vacaciones,perm_ver_salarios:!!form.perm_ver_salarios,
+            perm_autorizar_proyectos:!!form.perm_autorizar_proyectos,perm_asignar_pm:!!form.perm_asignar_pm,
+            perm_requisiciones:!!form.perm_requisiciones,perm_aprobar_req:!!form.perm_aprobar_req,perm_ver_comisiones:!!form.perm_ver_comisiones
+          }).eq('id',nw.id);
+        }
+      }else{
+        const upd={nombre:form.nombre,puesto:form.puesto,departamento:form.departamento,rol:form.rol,telefono:form.telefono,
+          tipo_contrato:form.tipo_contrato,salario:parseFloat(form.salario)||0,dias_vacaciones:parseInt(form.dias_vacaciones)||6,
+          activo:form.activo,notas:form.notas,foto_url:form.foto_url||'',
+          fecha_ingreso:form.fecha_ingreso||null,fecha_nacimiento:form.fecha_nacimiento||null,
+          perm_empleados:!!form.perm_empleados,perm_clientes:!!form.perm_clientes,perm_proveedores:!!form.perm_proveedores,
+          perm_proyectos:!!form.perm_proyectos,perm_ventas:!!form.perm_ventas,perm_finanzas:!!form.perm_finanzas,perm_calidad:!!form.perm_calidad,
+          perm_alta_empleados:!!form.perm_alta_empleados,perm_aprobar_vacaciones:!!form.perm_aprobar_vacaciones,perm_ver_salarios:!!form.perm_ver_salarios,
+          perm_autorizar_proyectos:!!form.perm_autorizar_proyectos,perm_asignar_pm:!!form.perm_asignar_pm,
+          perm_requisiciones:!!form.perm_requisiciones,perm_aprobar_req:!!form.perm_aprobar_req,perm_ver_comisiones:!!form.perm_ver_comisiones};
+        const{error}=await sb.from('empleados').update(upd).eq('id',sel.id);
+        if(error)throw error;
+        if(form.password)await sb.rpc('fn_cambiar_password',{p_id:sel.id,p_nueva:form.password});
+      }
+      setMsg('✅ Guardado correctamente');
+      await load();
+      setTimeout(()=>{setModal(null);setMsg('');},1200);
+    }catch(er){setMsg('❌ '+(er.message||'Error al guardar'));}
+    setSaving(false);
+  };
+
+  const PC=({k,lbl})=>(<label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer"><input type="checkbox" checked={!!form[k]} onChange={e=>setForm(f=>({...f,[k]:e.target.checked}))} className="w-4 h-4 accent-blue-600"/>{lbl}</label>);
+  const rc=r=>r==='Administrador'?'blue':r==='Gerente'?'purple':r==='Coordinador'?'yellow':'gray';
+
+  return(
+    <div className="fade">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div><h2 className="text-xl font-bold text-gray-800">Empleados</h2><p className="text-sm text-gray-500">{filt.length} registro{filt.length!==1?'s':''}</p></div>
+        {puedeCrear&&<Btn onClick={()=>{setForm(ef);setModal('nuevo');setMsg('');}}>+ Nuevo empleado</Btn>}
+      </div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar nombre, email, puesto..." className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 flex-1 min-w-48"/>
+        <select value={fDept} onChange={e=>setFDept(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+          <option value="">Todos los deptos.</option>
+          {depts.map(d=><option key={d} value={d}>{d}</option>)}
+        </select>
+      </div>
+      {loading?<Spin/>:filt.length===0?<Empty msg="Sin empleados registrados"/>:(
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50 border-b border-gray-100">
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Empleado</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden md:table-cell">Puesto / Depto.</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Rol</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Ingreso</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Cumpleaños</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Estatus</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-600">Acciones</th>
+              </tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {filt.map(e=>(
+                  <tr key={e.id} className="hover:bg-gray-50/70 transition">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <Avatar nombre={e.nombre} foto_url={e.foto_url}/>
+                        <div><p className="font-medium text-gray-800">{e.nombre}</p><p className="text-xs text-gray-400">{e.email}</p></div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell"><p className="text-gray-700">{e.puesto||'—'}</p><p className="text-xs text-gray-400">{e.departamento||'—'}</p></td>
+                    <td className="px-4 py-3"><Badge text={e.rol} color={rc(e.rol)}/></td>
+                    <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell">{fmtD(e.fecha_ingreso)}</td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      {e.fecha_nacimiento?<span className="text-xs text-gray-600">🎂 {fmtD(e.fecha_nacimiento)}</span>:<span className="text-xs text-gray-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3"><Badge text={e.activo?'Activo':'Inactivo'} color={e.activo?'green':'red'}/></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <Btn size="sm" color="outline" onClick={()=>{setSel(e);setModal('ver');}}>Ver</Btn>
+                        {isAdmin&&<Btn size="sm" color="outline" onClick={()=>{setSel(e);setForm({...e,password:''});setModal('editar');setMsg('');}}>Editar</Btn>}
+                        {isAdmin&&<Btn size="sm" color={e.activo?'red':'green'} onClick={async()=>{await sb.from('empleados').update({activo:!e.activo}).eq('id',e.id);load();}}>{e.activo?'Baja':'Alta'}</Btn>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal VER */}
+      {modal==='ver'&&sel&&(
+        <Modal title="Expediente del empleado" onClose={()=>setModal(null)} size="lg">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex flex-col items-center text-center gap-2">
+              <Avatar nombre={sel.nombre} foto_url={sel.foto_url} size="xl"/>
+              <h3 className="font-bold text-gray-800 text-lg mt-2">{sel.nombre}</h3>
+              <p className="text-gray-500 text-sm">{sel.puesto||'—'}</p>
+              <Badge text={sel.rol} color={rc(sel.rol)}/>
+              <Badge text={sel.activo?'Activo':'Inactivo'} color={sel.activo?'green':'red'}/>
+              {sel.departamento&&<div className="bg-gray-100 rounded-lg px-3 py-1 text-xs text-gray-600">{sel.departamento}</div>}
+            </div>
+            <div className="md:col-span-2 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ['📧 Email',sel.email],['📱 Teléfono',sel.telefono||'—'],
+                  ['📅 Fecha ingreso',fmtD(sel.fecha_ingreso)],['🎂 Cumpleaños',fmtD(sel.fecha_nacimiento)],
+                  ['📋 Tipo contrato',sel.tipo_contrato||'—'],['🏖️ Días de vacaciones',sel.dias_vacaciones||0],
+                  ...(user.perm_ver_salarios||isAdmin?[['💰 Salario',sel.salario?fmt(sel.salario):'—']]:[]  ),
+                  ['🕐 Último acceso',sel.ultimo_acceso?fmtD(sel.ultimo_acceso):'—'],
+                ].map(([k,v])=>(
+                  <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800 break-all">{v}</p></div>
+                ))}
+              </div>
+              <div className="bg-blue-50 rounded-xl p-3">
+                <p className="text-xs text-gray-600 font-semibold mb-2">🔐 Permisos de módulos</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[['perm_empleados','RR.HH.'],['perm_clientes','Ventas'],['perm_finanzas','Finanzas'],['perm_proyectos','Proyectos'],['perm_calidad','Calidad'],['perm_alta_empleados','Alta empl.'],['perm_aprobar_vacaciones','Apr. vac.'],['perm_requisiciones','Requisiciones'],['perm_aprobar_req','Apr. req.'],['perm_ver_comisiones','Comisiones']].map(([k,l])=>(
+                    <Badge key={k} text={l} color={sel[k]?'green':'gray'}/>
+                  ))}
+                </div>
+              </div>
+              {sel.notas&&<div className="bg-yellow-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-1">📝 Notas</p><p className="text-sm text-gray-700">{sel.notas}</p></div>}
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal NUEVO/EDITAR */}
+      {(modal==='nuevo'||modal==='editar')&&(
+        <Modal title={modal==='nuevo'?'Nuevo empleado':'Editar empleado'} onClose={()=>setModal(null)} size="xl">
+          <form onSubmit={save}>
+            {/* Datos personales */}
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Datos personales</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <Input label="Nombre completo" value={form.nombre} onChange={v=>setForm(f=>({...f,nombre:v}))} required/>
+              <Input label="Email" type="email" value={form.email} onChange={v=>setForm(f=>({...f,email:v}))} required disabled={modal==='editar'}/>
+              <Input label={modal==='nuevo'?'Contraseña':'Nueva contraseña (opcional)'} type="password" value={form.password} onChange={v=>setForm(f=>({...f,password:v}))} required={modal==='nuevo'}/>
+              <Input label="Teléfono" value={form.telefono} onChange={v=>setForm(f=>({...f,telefono:v}))}/>
+              <Input label="Fecha de nacimiento 🎂" type="date" value={form.fecha_nacimiento} onChange={v=>setForm(f=>({...f,fecha_nacimiento:v}))}/>
+              <Input label="Foto (URL de imagen)" value={form.foto_url} onChange={v=>setForm(f=>({...f,foto_url:v}))} placeholder="https://..."/>
+            </div>
+            {/* Datos laborales */}
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 mt-2">Datos laborales</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <Input label="Puesto" value={form.puesto} onChange={v=>setForm(f=>({...f,puesto:v}))}/>
+              <Sel label="Departamento" value={form.departamento} onChange={v=>setForm(f=>({...f,departamento:v}))}
+                options={[{value:'',label:'Selecciona...'},{value:'Dirección General',label:'Dirección General'},{value:'Recursos Humanos',label:'Recursos Humanos'},{value:'Ventas / Comercial',label:'Ventas / Comercial'},{value:'Finanzas / Contabilidad',label:'Finanzas / Contabilidad'},{value:'Operaciones',label:'Operaciones'},{value:'Análisis',label:'Análisis'},{value:'Sistemas',label:'Sistemas'}]}/>
+              <Sel label="Rol en el sistema" value={form.rol} onChange={v=>setForm(f=>({...f,rol:v}))}
+                options={(isAdmin?['Administrador','Gerente','Coordinador','Analista','Operativo']:['Gerente','Coordinador','Analista','Operativo']).map(r=>({value:r,label:r}))}/>
+              <Sel label="Tipo de contrato" value={form.tipo_contrato} onChange={v=>setForm(f=>({...f,tipo_contrato:v}))}
+                options={['Indefinido','Temporal','Por Proyecto','Honorarios'].map(r=>({value:r,label:r}))}/>
+              <Input label="Fecha de ingreso 📅" type="date" value={form.fecha_ingreso} onChange={v=>setForm(f=>({...f,fecha_ingreso:v}))}/>
+              <Input label="Días de vacaciones" type="number" value={form.dias_vacaciones} onChange={v=>setForm(f=>({...f,dias_vacaciones:v}))}/>
+              {(isAdmin||user.perm_ver_salarios)&&<Input label="Salario mensual" type="number" value={form.salario} onChange={v=>setForm(f=>({...f,salario:v}))}/>}
+            </div>
+            {/* Permisos de módulos */}
+            {isAdmin&&(<>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 mt-2">Acceso a módulos</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-4 bg-blue-50 rounded-xl mb-4">
+                <PC k="perm_empleados" lbl="👥 RR.HH."/>
+                <PC k="perm_clientes" lbl="💼 Ventas/CRM"/>
+                <PC k="perm_proveedores" lbl="🏭 Proveedores"/>
+                <PC k="perm_proyectos" lbl="🏗️ Proyectos"/>
+                <PC k="perm_ventas" lbl="📊 Ventas extra"/>
+                <PC k="perm_finanzas" lbl="💰 Finanzas"/>
+                <PC k="perm_calidad" lbl="✅ Calidad"/>
+              </div>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Permisos de acciones</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-4 bg-orange-50 rounded-xl mb-4">
+                <PC k="perm_alta_empleados" lbl="➕ Dar alta empleados"/>
+                <PC k="perm_aprobar_vacaciones" lbl="✅ Aprobar vacaciones"/>
+                <PC k="perm_ver_salarios" lbl="💰 Ver salarios"/>
+                <PC k="perm_autorizar_proyectos" lbl="📋 Autorizar proyectos"/>
+                <PC k="perm_asignar_pm" lbl="👤 Asignar PM"/>
+                <PC k="perm_requisiciones" lbl="📦 Crear requisiciones"/>
+                <PC k="perm_aprobar_req" lbl="✔️ Aprobar requisiciones"/>
+                <PC k="perm_ver_comisiones" lbl="💵 Ver comisiones"/>
+              </div>
+            </>)}
+            <Textarea label="Notas" value={form.notas} onChange={v=>setForm(f=>({...f,notas:v}))}/>
+            {modal==='editar'&&<div className="mt-3 flex items-center gap-2"><input type="checkbox" id="act" checked={!!form.activo} onChange={e=>setForm(f=>({...f,activo:e.target.checked}))} className="accent-blue-600"/><label htmlFor="act" className="text-sm text-gray-600">Empleado activo</label></div>}
+            {msg&&<p className="mt-3 text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+            <div className="flex justify-end gap-2 mt-5">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn type="submit" disabled={saving}>{saving?'Guardando...':'Guardar empleado'}</Btn>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RR.HH. — VACACIONES (con días disponibles)
+// ═══════════════════════════════════════════════════════════════
+function VacacionesTab({user}){
+  const[data,setData]=useState([]);
+  const[emps,setEmps]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[modal,setModal]=useState(false);
+  const[form,setForm]=useState({});
+  const[saving,setSaving]=useState(false);
+  const[msg,setMsg]=useState('');
+  const[fEst,setFEst]=useState('');
+  const[verEmp,setVerEmp]=useState(null);
+  const puedeAprobar=user.perm_aprobar_vacaciones||user.rol==='Administrador'||user.rol==='Gerente';
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const[v,e]=await Promise.all([
+      sb.from('vacaciones').select('*,emp:empleados!vacaciones_empleado_id_fkey(nombre,departamento,dias_vacaciones,foto_url),apr:empleados!vacaciones_aprobado_por_fkey(nombre)').order('created_at',{ascending:false}),
+      sb.from('empleados').select('id,nombre,dias_vacaciones,departamento,foto_url').eq('activo',true).order('nombre')
+    ]);
+    setData(v.data||[]);setEmps(e.data||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{load();},[load]);
+
+  // Calcular días usados y disponibles por empleado en el año actual
+  const diasUsadosPorEmp=useMemo(()=>{
+    const m={};
+    (data||[]).filter(v=>v.estatus==='Aprobado'&&v.tipo==='Vacaciones'&&new Date(v.fecha_inicio).getFullYear()===anioActual)
+      .forEach(v=>{m[v.empleado_id]=(m[v.empleado_id]||0)+(v.dias_solicitados||0);});
+    return m;
+  },[data]);
+
+  const filt=useMemo(()=>(data||[]).filter(v=>!fEst||v.estatus===fEst),[data,fEst]);
+  const dias=(a,b)=>{if(!a||!b)return 0;return Math.max(0,Math.round((new Date(b)-new Date(a))/(864e5))+1);};
+  const ef={empleado_id:'',fecha_inicio:'',fecha_fin:'',tipo:'Vacaciones',motivo:''};
+
+  const save=async e=>{
+    e.preventDefault();setSaving(true);setMsg('');
+    try{
+      const d=dias(form.fecha_inicio,form.fecha_fin);
+      const{error}=await sb.from('vacaciones').insert({empleado_id:parseInt(form.empleado_id),fecha_inicio:form.fecha_inicio,fecha_fin:form.fecha_fin,dias_solicitados:d,tipo:form.tipo,motivo:form.motivo,estatus:'Pendiente'});
+      if(error)throw error;
+      setMsg('✅ Solicitud registrada');await load();
+      setTimeout(()=>{setModal(false);setMsg('');},1000);
+    }catch(er){setMsg('❌ '+(er.message||'Error'));}
+    setSaving(false);
+  };
+
+  const cambiar=async(id,est)=>{
+    await sb.from('vacaciones').update({estatus:est,aprobado_por:user.id}).eq('id',id);load();
+  };
+
+  const ec=e=>e==='Aprobado'?'green':e==='Rechazado'?'red':'yellow';
+  const ti=t=>t==='Vacaciones'?'🏖️':t==='Incapacidad'?'🏥':t==='Permiso con goce'?'✅':'⏸️';
+
+  return(
+    <div className="fade">
+      {/* Resumen de saldos */}
+      <div className="mb-5">
+        <h2 className="text-xl font-bold text-gray-800 mb-3">Vacaciones y Permisos</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          {emps.slice(0,8).map(e=>{
+            const usados=diasUsadosPorEmp[e.id]||0;
+            const disponibles=(e.dias_vacaciones||0)-usados;
+            const pct=e.dias_vacaciones?Math.round((usados/e.dias_vacaciones)*100):0;
+            return(
+              <div key={e.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Avatar nombre={e.nombre} foto_url={e.foto_url}/>
+                  <p className="text-xs font-semibold text-gray-700 leading-tight">{e.nombre.split(' ')[0]}</p>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Usados: <strong>{usados}</strong></span>
+                  <span>Disp: <strong className={disponibles<2?'text-red-600':'text-green-600'}>{disponibles}</strong></span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-1.5">
+                  <div className={`h-1.5 rounded-full ${pct>80?'bg-red-400':pct>50?'bg-yellow-400':'bg-green-400'}`} style={{width:`${Math.min(pct,100)}%`}}/>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <p className="text-sm text-gray-500">{filt.length} solicitudes</p>
+        <div className="flex gap-2">
+          <select value={fEst} onChange={e=>setFEst(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+            <option value="">Todos</option>
+            {['Pendiente','Aprobado','Rechazado'].map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+          <Btn onClick={()=>{setForm(ef);setModal(true);setMsg('');}}>+ Nueva solicitud</Btn>
+        </div>
+      </div>
+
+      {loading?<Spin/>:filt.length===0?<Empty msg="Sin solicitudes"/>:(
+        <div className="space-y-3">
+          {filt.map(v=>{
+            const usados=diasUsadosPorEmp[v.empleado_id]||0;
+            const disp=(v.emp?.dias_vacaciones||0)-usados;
+            return(
+              <div key={v.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{ti(v.tipo)}</span>
+                    <div>
+                      <p className="font-semibold text-gray-800">{v.emp?.nombre||'—'}</p>
+                      <p className="text-xs text-gray-500">{v.emp?.departamento||''} · {v.tipo}</p>
+                      <p className="text-xs text-blue-600 mt-0.5">Días disponibles: <strong>{disp}</strong> de {v.emp?.dias_vacaciones||0}</p>
+                    </div>
+                  </div>
+                  <Badge text={v.estatus} color={ec(v.estatus)}/>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
+                  <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-400">Inicio</p><p className="font-medium">{fmtD(v.fecha_inicio)}</p></div>
+                  <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-400">Fin</p><p className="font-medium">{fmtD(v.fecha_fin)}</p></div>
+                  <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-400">Días solicitados</p><p className="font-bold text-blue-600">{v.dias_solicitados}</p></div>
+                </div>
+                {v.motivo&&<p className="text-xs text-gray-500 mt-2">📝 {v.motivo}</p>}
+                {puedeAprobar&&v.estatus==='Pendiente'&&(
+                  <div className="flex gap-2 mt-3">
+                    <Btn size="sm" color="green" onClick={()=>cambiar(v.id,'Aprobado')}>✓ Aprobar</Btn>
+                    <Btn size="sm" color="red" onClick={()=>cambiar(v.id,'Rechazado')}>✗ Rechazar</Btn>
+                  </div>
+                )}
+                {v.apr&&<p className="text-xs text-gray-400 mt-2">Revisado por: {v.apr.nombre}</p>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {modal&&(
+        <Modal title="Nueva solicitud de vacaciones/permiso" onClose={()=>setModal(false)}>
+          <form onSubmit={save} className="space-y-4">
+            <Sel label="Empleado" value={form.empleado_id||''} onChange={v=>{
+              setForm(f=>({...f,empleado_id:v}));
+            }} required options={[{value:'',label:'Selecciona empleado'},...emps.map(e=>({value:e.id,label:`${e.nombre} (${(e.dias_vacaciones||0)-(diasUsadosPorEmp[e.id]||0)} días disp.)`}))]}/>
+            <Sel label="Tipo" value={form.tipo} onChange={v=>setForm(f=>({...f,tipo:v}))} options={['Vacaciones','Permiso con goce','Permiso sin goce','Incapacidad'].map(t=>({value:t,label:t}))}/>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Fecha inicio" type="date" value={form.fecha_inicio} onChange={v=>setForm(f=>({...f,fecha_inicio:v}))} required/>
+              <Input label="Fecha fin" type="date" value={form.fecha_fin} onChange={v=>setForm(f=>({...f,fecha_fin:v}))} required/>
+            </div>
+            {form.fecha_inicio&&form.fecha_fin&&<div className="bg-blue-50 rounded-xl p-3 text-sm text-blue-700 font-medium">📅 Total: {dias(form.fecha_inicio,form.fecha_fin)} día(s) solicitado(s)</div>}
+            <Textarea label="Motivo" value={form.motivo} onChange={v=>setForm(f=>({...f,motivo:v}))} rows={2}/>
+            {msg&&<p className="text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+            <div className="flex justify-end gap-2">
+              <Btn color="gray" onClick={()=>setModal(false)}>Cancelar</Btn>
+              <Btn type="submit" disabled={saving}>{saving?'Guardando...':'Registrar solicitud'}</Btn>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RR.HH. — ASISTENCIAS
+// ═══════════════════════════════════════════════════════════════
+function AsistenciasTab({user}){
+  const[data,setData]=useState([]);
+  const[emps,setEmps]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[fecha,setFecha]=useState(new Date().toISOString().split('T')[0]);
+  const[modal,setModal]=useState(false);
+  const[form,setForm]=useState({});
+  const[saving,setSaving]=useState(false);
+  const[msg,setMsg]=useState('');
+  const puedeReg=user.rol==='Administrador'||user.rol==='Gerente'||user.perm_aprobar_vacaciones;
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const[a,e]=await Promise.all([
+      sb.from('asistencias').select('*,emp:empleados(nombre,departamento,foto_url)').eq('fecha',fecha),
+      sb.from('empleados').select('id,nombre,departamento,foto_url').eq('activo',true).order('nombre')
+    ]);
+    setData(a.data||[]);setEmps(e.data||[]);setLoading(false);
+  },[fecha]);
+  useEffect(()=>{load();},[load]);
+
+  const byEmp=useMemo(()=>{const m={};(data||[]).forEach(a=>m[a.empleado_id]=a);return m;},[data]);
+  const res=useMemo(()=>{const c={Presente:0,Ausente:0,Tarde:0,'Home Office':0,Vacaciones:0,Incapacidad:0};(data||[]).forEach(a=>{if(c[a.estatus]!==undefined)c[a.estatus]++;});return c;},[data]);
+
+  const save=async e=>{
+    e.preventDefault();setSaving(true);setMsg('');
+    try{
+      const{error}=await sb.from('asistencias').upsert({empleado_id:parseInt(form.empleado_id),fecha,hora_entrada:form.hora_entrada||null,hora_salida:form.hora_salida||null,estatus:form.estatus,notas:form.notas||''},{onConflict:'empleado_id,fecha'});
+      if(error)throw error;
+      setMsg('✅ Registrado');await load();setTimeout(()=>{setModal(false);setMsg('');},900);
+    }catch(er){setMsg('❌ '+(er.message||'Error'));}
+    setSaving(false);
+  };
+
+  const ec=s=>s==='Presente'?'green':s==='Ausente'?'red':s==='Tarde'?'yellow':s==='Home Office'?'blue':'gray';
+  const ei=s=>s==='Presente'?'✅':s==='Ausente'?'❌':s==='Tarde'?'⚠️':s==='Home Office'?'🏠':s==='Vacaciones'?'🏖️':'🏥';
+
+  return(
+    <div className="fade">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div><h2 className="text-xl font-bold text-gray-800">Asistencias</h2><p className="text-sm text-gray-500">{data.length} registros del día</p></div>
+        <div className="flex gap-2 items-center">
+          <Input type="date" value={fecha} onChange={setFecha}/>
+          {puedeReg&&<Btn onClick={()=>{setForm({estatus:'Presente',hora_entrada:'09:00',hora_salida:'18:00'});setModal(true);setMsg('');}}>+ Registrar</Btn>}
+        </div>
+      </div>
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-5">
+        {Object.entries(res).map(([k,v])=>(<div key={k} className="bg-white rounded-xl border border-gray-100 p-3 text-center shadow-sm"><p className="text-2xl font-bold text-gray-800">{v}</p><p className="text-xs text-gray-500 mt-0.5">{k}</p></div>))}
+      </div>
+      {loading?<Spin/>:(
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50 border-b border-gray-100">
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Empleado</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden md:table-cell">Depto.</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Estatus</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Entrada</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Salida</th>
+              </tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {emps.map(emp=>{
+                  const r=byEmp[emp.id];
+                  return(<tr key={emp.id} className={`hover:bg-gray-50/70 transition ${!r?'opacity-60':''}`}>
+                    <td className="px-4 py-3"><div className="flex items-center gap-2"><Avatar nombre={emp.nombre} foto_url={emp.foto_url}/><span className="font-medium text-gray-800">{emp.nombre}</span></div></td>
+                    <td className="px-4 py-3 text-gray-500 hidden md:table-cell">{emp.departamento||'—'}</td>
+                    <td className="px-4 py-3">{r?<Badge text={`${ei(r.estatus)} ${r.estatus}`} color={ec(r.estatus)}/>:<Badge text="Sin registro" color="gray"/>}</td>
+                    <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">{r?.hora_entrada||'—'}</td>
+                    <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">{r?.hora_salida||'—'}</td>
+                  </tr>);
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {modal&&(<Modal title="Registrar asistencia" onClose={()=>setModal(false)}>
+        <form onSubmit={save} className="space-y-4">
+          <Sel label="Empleado" value={form.empleado_id||''} onChange={v=>setForm(f=>({...f,empleado_id:v}))} required options={[{value:'',label:'Selecciona empleado'},...emps.map(e=>({value:e.id,label:e.nombre}))]}/>
+          <Sel label="Estatus" value={form.estatus} onChange={v=>setForm(f=>({...f,estatus:v}))} options={['Presente','Ausente','Tarde','Home Office','Vacaciones','Incapacidad'].map(s=>({value:s,label:s}))}/>
+          <div className="grid grid-cols-2 gap-3"><Input label="Hora entrada" type="time" value={form.hora_entrada||''} onChange={v=>setForm(f=>({...f,hora_entrada:v}))}/><Input label="Hora salida" type="time" value={form.hora_salida||''} onChange={v=>setForm(f=>({...f,hora_salida:v}))}/></div>
+          <Input label="Notas" value={form.notas||''} onChange={v=>setForm(f=>({...f,notas:v}))}/>
+          {msg&&<p className="text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+          <div className="flex justify-end gap-2"><Btn color="gray" onClick={()=>setModal(false)}>Cancelar</Btn><Btn type="submit" disabled={saving}>{saving?'Guardando...':'Registrar'}</Btn></div>
+        </form>
+      </Modal>)}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RR.HH. — CAPACITACIONES
+// ═══════════════════════════════════════════════════════════════
+function CapacitacionesTab({user}){
+  const[caps,setCaps]=useState([]);
+  const[emps,setEmps]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[modal,setModal]=useState(null);
+  const[form,setForm]=useState({});
+  const[saving,setSaving]=useState(false);
+  const[msg,setMsg]=useState('');
+  const isAdmin=user.rol==='Administrador'||user.rol==='Gerente';
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const[c,e]=await Promise.all([
+      sb.from('capacitaciones').select('*').order('created_at',{ascending:false}),
+      sb.from('empleados').select('id,nombre,foto_url').eq('activo',true).order('nombre')
+    ]);
+    setCaps(c.data||[]);setEmps(e.data||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{load();},[load]);
+
+  const ef={titulo:'',descripcion:'',tipo:'Interna',instructor:'',proveedor:'',fecha_inicio:'',fecha_fin:'',duracion_horas:'',obligatoria:false,departamento:'',costo:''};
+
+  const save=async e=>{
+    e.preventDefault();setSaving(true);setMsg('');
+    try{
+      const obj={titulo:form.titulo,descripcion:form.descripcion,tipo:form.tipo,instructor:form.instructor,proveedor:form.proveedor,fecha_inicio:form.fecha_inicio||null,fecha_fin:form.fecha_fin||null,duracion_horas:parseInt(form.duracion_horas)||0,obligatoria:!!form.obligatoria,departamento:form.departamento,costo:parseFloat(form.costo)||0,activa:true};
+      if(modal==='nueva'){const{error}=await sb.from('capacitaciones').insert(obj);if(error)throw error;}
+      else{const{error}=await sb.from('capacitaciones').update(obj).eq('id',form.id);if(error)throw error;}
+      setMsg('✅ Guardado');await load();setTimeout(()=>{setModal(null);setMsg('');},1000);
+    }catch(er){setMsg('❌ '+(er.message||'Error'));}
+    setSaving(false);
+  };
+
+  const tc=t=>t==='Interna'?'blue':t==='Externa'?'purple':t==='Online'?'green':'orange';
+
+  return(
+    <div className="fade">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div><h2 className="text-xl font-bold text-gray-800">Capacitaciones</h2><p className="text-sm text-gray-500">{caps.length} programas registrados</p></div>
+        {isAdmin&&<Btn onClick={()=>{setForm(ef);setModal('nueva');setMsg('');}}>+ Nueva capacitación</Btn>}
+      </div>
+      {loading?<Spin/>:caps.length===0?<Empty msg="Sin capacitaciones registradas"/>:(
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {caps.map(c=>(
+            <div key={c.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div>
+                  <h3 className="font-semibold text-gray-800">{c.titulo}</h3>
+                  {c.departamento&&<p className="text-xs text-gray-500">{c.departamento}</p>}
+                </div>
+                <div className="flex gap-1 flex-shrink-0">
+                  <Badge text={c.tipo} color={tc(c.tipo)}/>
+                  {c.obligatoria&&<Badge text="Obligatoria" color="red"/>}
+                </div>
+              </div>
+              {c.descripcion&&<p className="text-sm text-gray-600 mb-3">{c.descripcion}</p>}
+              <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                {c.instructor&&<span>👤 {c.instructor}</span>}
+                {c.duracion_horas>0&&<span>⏱️ {c.duracion_horas} hrs</span>}
+                {c.fecha_inicio&&<span>📅 {fmtD(c.fecha_inicio)}</span>}
+                {c.costo>0&&<span>💰 {fmt(c.costo)}</span>}
+              </div>
+              {isAdmin&&(
+                <div className="flex gap-2 mt-3">
+                  <Btn size="sm" color="outline" onClick={()=>{setForm(c);setModal('editar');setMsg('');}}>Editar</Btn>
+                  <Btn size="sm" color="red" onClick={async()=>{await sb.from('capacitaciones').delete().eq('id',c.id);load();}}>Eliminar</Btn>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {(modal==='nueva'||modal==='editar')&&(
+        <Modal title={modal==='nueva'?'Nueva capacitación':'Editar capacitación'} onClose={()=>setModal(null)} size="lg">
+          <form onSubmit={save}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input label="Título" value={form.titulo} onChange={v=>setForm(f=>({...f,titulo:v}))} required className="md:col-span-2"/>
+              <Textarea label="Descripción" value={form.descripcion} onChange={v=>setForm(f=>({...f,descripcion:v}))} className="md:col-span-2"/>
+              <Sel label="Tipo" value={form.tipo} onChange={v=>setForm(f=>({...f,tipo:v}))} options={['Interna','Externa','Online','Certificación'].map(t=>({value:t,label:t}))}/>
+              <Sel label="Departamento" value={form.departamento} onChange={v=>setForm(f=>({...f,departamento:v}))} options={[{value:'',label:'Todos'},{value:'Dirección General',label:'Dirección General'},{value:'Recursos Humanos',label:'Recursos Humanos'},{value:'Ventas / Comercial',label:'Ventas / Comercial'},{value:'Finanzas / Contabilidad',label:'Finanzas / Contabilidad'},{value:'Operaciones',label:'Operaciones'},{value:'Análisis',label:'Análisis'},{value:'Sistemas',label:'Sistemas'}]}/>
+              <Input label="Instructor" value={form.instructor} onChange={v=>setForm(f=>({...f,instructor:v}))}/>
+              <Input label="Proveedor / Empresa" value={form.proveedor} onChange={v=>setForm(f=>({...f,proveedor:v}))}/>
+              <Input label="Fecha inicio" type="date" value={form.fecha_inicio} onChange={v=>setForm(f=>({...f,fecha_inicio:v}))}/>
+              <Input label="Fecha fin" type="date" value={form.fecha_fin} onChange={v=>setForm(f=>({...f,fecha_fin:v}))}/>
+              <Input label="Duración (horas)" type="number" value={form.duracion_horas} onChange={v=>setForm(f=>({...f,duracion_horas:v}))}/>
+              <Input label="Costo" type="number" value={form.costo} onChange={v=>setForm(f=>({...f,costo:v}))}/>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer mt-3">
+              <input type="checkbox" checked={!!form.obligatoria} onChange={e=>setForm(f=>({...f,obligatoria:e.target.checked}))} className="w-4 h-4 accent-blue-600"/>
+              Capacitación obligatoria
+            </label>
+            {msg&&<p className="mt-3 text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+            <div className="flex justify-end gap-2 mt-5"><Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn><Btn type="submit" disabled={saving}>{saving?'Guardando...':'Guardar'}</Btn></div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RR.HH. — ORGANIGRAMA
+// ═══════════════════════════════════════════════════════════════
+function OrganigramaTab(){
+  const[emps,setEmps]=useState([]);
+  const[loading,setLoading]=useState(true);
+  useEffect(()=>{(async()=>{const{data}=await sb.from('empleados').select('id,nombre,puesto,departamento,rol,foto_url').eq('activo',true).order('rol');setEmps(data||[]);setLoading(false);})();},[]);
+  const byDept=useMemo(()=>{const m={};(emps||[]).forEach(e=>{const d=e.departamento||'Sin departamento';if(!m[d])m[d]=[];m[d].push(e);});return m;},[emps]);
+  const ro=['Administrador','Gerente','Coordinador','Analista','Operativo'];
+  const bc=r=>r==='Administrador'?'border-blue-400 bg-blue-50':r==='Gerente'?'border-purple-400 bg-purple-50':r==='Coordinador'?'border-yellow-400 bg-yellow-50':'border-gray-200 bg-white';
+  const rb=r=>r==='Administrador'?'blue':r==='Gerente'?'purple':r==='Coordinador'?'yellow':'gray';
+  return(
+    <div className="fade">
+      <div className="mb-5"><h2 className="text-xl font-bold text-gray-800">Organigrama</h2><p className="text-sm text-gray-500">{emps.length} empleados activos</p></div>
+      {loading?<Spin/>:(
+        <div className="space-y-6">
+          {Object.entries(byDept).sort().map(([dept,list])=>(
+            <div key={dept} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div className="flex items-center gap-2 mb-4"><div className="w-2 h-6 bg-brand rounded-full"/><h3 className="font-bold text-gray-700 text-lg">{dept}</h3><span className="bg-gray-100 text-gray-500 text-xs px-2 py-0.5 rounded-full">{list.length}</span></div>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                {[...list].sort((a,b)=>ro.indexOf(a.rol)-ro.indexOf(b.rol)).map(e=>(
+                  <div key={e.id} className={`border-2 ${bc(e.rol)} rounded-xl p-3 text-center`}>
+                    <div className="flex justify-center mb-2"><Avatar nombre={e.nombre} foto_url={e.foto_url} size="lg"/></div>
+                    <p className="font-semibold text-gray-800 text-sm">{e.nombre}</p>
+                    <p className="text-gray-500 text-xs mt-0.5">{e.puesto||'—'}</p>
+                    <div className="mt-2"><Badge text={e.rol} color={rb(e.rol)}/></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RR.HH. — INFORMACIÓN DE LA EMPRESA
+// ═══════════════════════════════════════════════════════════════
+function InfoEmpresaTab({user}){
+  const[config,setConfig]=useState({});
+  const[loading,setLoading]=useState(true);
+  const[editing,setEditing]=useState(false);
+  const[form,setForm]=useState({});
+  const[saving,setSaving]=useState(false);
+  const[msg,setMsg]=useState('');
+  const isAdmin=user.rol==='Administrador';
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const{data}=await sb.from('empresa_config').select('*');
+    const m={};(data||[]).forEach(r=>m[r.clave]=r.valor);
+    setConfig(m);setLoading(false);
+  },[]);
+  useEffect(()=>{load();},[load]);
+
+  const save=async()=>{
+    setSaving(true);setMsg('');
+    try{
+      const ups=Object.entries(form).map(([clave,valor])=>({clave,valor}));
+      const{error}=await sb.from('empresa_config').upsert(ups,{onConflict:'clave'});
+      if(error)throw error;
+      setMsg('✅ Información guardada');await load();setEditing(false);setMsg('');
+    }catch(er){setMsg('❌ '+(er.message||'Error'));}
+    setSaving(false);
+  };
+
+  if(loading)return <Spin/>;
+
+  const campos=[
+    {k:'nombre',l:'Nombre de la empresa',icon:'🏢'},
+    {k:'slogan',l:'Slogan',icon:'💬'},
+    {k:'rfc',l:'RFC',icon:'📋'},
+    {k:'telefono',l:'Teléfono',icon:'📞'},
+    {k:'email',l:'Email corporativo',icon:'📧'},
+    {k:'sitio_web',l:'Sitio web',icon:'🌐'},
+    {k:'direccion',l:'Dirección',icon:'📍'},
+    {k:'mision',l:'Misión',icon:'🎯'},
+    {k:'vision',l:'Visión',icon:'🔭'},
+    {k:'valores',l:'Valores',icon:'⭐'},
+  ];
+
+  return(
+    <div className="fade">
+      <div className="flex items-center justify-between mb-5">
+        <div><h2 className="text-xl font-bold text-gray-800">Información de la Empresa</h2><p className="text-sm text-gray-500">Datos generales de SERTA de México</p></div>
+        {isAdmin&&!editing&&<Btn onClick={()=>{setForm({...config});setEditing(true);}}>✏️ Editar información</Btn>}
+      </div>
+      {!editing?(
+        <div className="space-y-4">
+          {config.logo_url&&<div className="bg-white rounded-2xl border border-gray-100 p-6 text-center"><img src={config.logo_url} alt="Logo" className="h-20 mx-auto object-contain"/></div>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {campos.map(({k,l,icon})=>config[k]?(
+              <div key={k} className={`bg-white rounded-2xl border border-gray-100 shadow-sm p-4 ${(k==='mision'||k==='vision'||k==='valores')?'md:col-span-2':''}`}>
+                <p className="text-xs text-gray-500 mb-1">{icon} {l}</p>
+                <p className="text-sm font-medium text-gray-800 whitespace-pre-line">{config[k]}</p>
+              </div>
+            ):null)}
+          </div>
+        </div>
+      ):(
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {campos.slice(0,7).map(({k,l})=>(
+              <Input key={k} label={l} value={form[k]||''} onChange={v=>setForm(f=>({...f,[k]:v}))}/>
+            ))}
+            <Input label="URL del logo" value={form.logo_url||''} onChange={v=>setForm(f=>({...f,logo_url:v}))} placeholder="https://..."/>
+          </div>
+          <div className="grid grid-cols-1 gap-4 mt-4">
+            {campos.slice(7).map(({k,l})=>(
+              <Textarea key={k} label={l} value={form[k]||''} onChange={v=>setForm(f=>({...f,[k]:v}))} rows={3}/>
+            ))}
+          </div>
+          {msg&&<p className="mt-3 text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+          <div className="flex justify-end gap-2 mt-5">
+            <Btn color="gray" onClick={()=>setEditing(false)}>Cancelar</Btn>
+            <Btn onClick={save} disabled={saving}>{saving?'Guardando...':'Guardar cambios'}</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RR.HH. — MÓDULO PRINCIPAL
+// ═══════════════════════════════════════════════════════════════
+function RRHHModule({user}){
+  const[tab,setTab]=useState('empleados');
+  const tabs=[{id:'empleados',label:'👥 Empleados'},{id:'vacaciones',label:'🏖️ Vacaciones'},{id:'capacitaciones',label:'📚 Capacitaciones'},{id:'organigrama',label:'🏢 Organigrama'},{id:'empresa',label:'ℹ️ Info Empresa'}];
+  return(
+    <div className="p-6 fade">
+      <h1 className="text-2xl font-bold text-gray-800 mb-5">Recursos Humanos</h1>
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6 overflow-x-auto">
+        {tabs.map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${tab===t.id?'bg-white text-blue-600 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>{t.label}</button>))}
+      </div>
+      {tab==='empleados'    &&<EmpleadosTab user={user}/>}
+      {tab==='vacaciones'   &&<VacacionesTab user={user}/>}
+      
+      {tab==='capacitaciones'&&<CapacitacionesTab user={user}/>}
+      {tab==='organigrama'  &&<OrganigramaTab/>}
+      {tab==='empresa'      &&<InfoEmpresaTab user={user}/>}
+    </div>
+  );
+}
+
+function Pronto({titulo,icon,semana}){
+  return(<div className="p-6 flex items-center justify-center min-h-96 fade"><div className="text-center"><div className="text-6xl mb-4">{icon}</div><h2 className="text-xl font-bold text-gray-700">{titulo}</h2><p className="text-gray-400 text-sm mt-2">Módulo en construcción</p><div className="mt-4 bg-blue-50 text-blue-600 text-sm px-4 py-2 rounded-xl inline-block">Próximamente — Semana {semana}</div></div></div>);
+}
+
+function App(){
+  const[user,setUser]=useState(()=>getS());
+  const[mod,setMod]=useState('dashboard');
+  const logout=()=>{sessionStorage.removeItem(SK);setUser(null);};
+  if(!user)return <LoginPage onLogin={u=>{setUser(u);setMod('dashboard');}}/>;
+  return(
+    <div className="flex min-h-screen">
+      <Sidebar user={user} active={mod} setActive={setMod} onLogout={logout}/>
+      <main className="flex-1 overflow-y-auto bg-gray-50">
+        {mod==='dashboard'&&<Dashboard user={user}/>}
+        {mod==='rrhh'&&<RRHHModule user={user}/>}
+        {mod==='ventas'&&<Pronto titulo="Ventas / CRM" icon="💼" semana="2"/>}
+        {mod==='finanzas'&&<Pronto titulo="Finanzas" icon="💰" semana="2"/>}
+        {mod==='proyectos'&&<Pronto titulo="Proyectos y Operaciones" icon="🏗️" semana="3"/>}
+        {mod==='calidad'&&<Pronto titulo="Calidad" icon="✅" semana="3"/>}
+      </main>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
