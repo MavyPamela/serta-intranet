@@ -137,7 +137,9 @@ function LoginPage({onLogin}){
 const MODS=[
   {id:'dashboard',label:'Dashboard',icon:'📊',perm:null},
   {id:'rrhh',label:'RR.HH.',icon:'👥',perm:'perm_empleados'},
-  {id:'ventas',label:'Ventas/CRM',icon:'💼',perm:'perm_clientes'},
+  {id:'proveedores',label:'Proveedores',icon:'🏭',perm:'perm_proveedores'},
+  {id:'clientes',label:'Clientes',icon:'🤝',perm:'perm_clientes'},
+  {id:'ventas',label:'Ventas/CRM',icon:'💼',perm:'perm_ventas'},
   {id:'finanzas',label:'Finanzas',icon:'💰',perm:'perm_finanzas'},
   {id:'proyectos',label:'Proyectos',icon:'🏗️',perm:'perm_proyectos'},
   {id:'calidad',label:'Calidad',icon:'✅',perm:'perm_calidad'},
@@ -973,6 +975,438 @@ function RRHHModule({user}){
   );
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// PROVEEDORES
+// ═══════════════════════════════════════════════════════════════
+function ProveedoresModule({user}){
+  const[data,setData]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[search,setSearch]=useState('');
+  const[modal,setModal]=useState(null);
+  const[sel,setSel]=useState(null);
+  const[form,setForm]=useState({});
+  const[contactos,setContactos]=useState([]);
+  const[formCont,setFormCont]=useState({});
+  const[modalCont,setModalCont]=useState(false);
+  const[saving,setSaving]=useState(false);
+  const[msg,setMsg]=useState('');
+  const[rfcWarn,setRfcWarn]=useState('');
+  const isAdmin=user.rol==='Administrador'||user.rol==='Gerente'||user.perm_proveedores;
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const{data:d}=await sb.from('proveedores').select('*').order('nombre');
+    setData(d||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{load();},[load]);
+
+  const loadContactos=async(provId)=>{
+    const{data:c}=await sb.from('proveedor_contactos').select('*').eq('proveedor_id',provId).order('es_principal',{ascending:false});
+    setContactos(c||[]);
+  };
+
+  const filt=useMemo(()=>(data||[]).filter(p=>{
+    const q=search.toLowerCase();
+    return !q||(p.nombre||'').toLowerCase().includes(q)||(p.rfc||'').toLowerCase().includes(q)||(p.razon_social||'').toLowerCase().includes(q);
+  }),[data,search]);
+
+  const ef={nombre:'',razon_social:'',rfc:'',email:'',telefono:'',direccion:'',ciudad:'',estado:'',cp:'',categoria:'Materiales',calificacion:3,banco:'',cuenta_banco:'',clabe:'',notas:'',activo:true};
+
+  const checkRfc=async(rfc,excluirId=null)=>{
+    if(!rfc||rfc.length<5){setRfcWarn('');return;}
+    const{data:r}=await sb.rpc('fn_verificar_rfc',{p_rfc:rfc,p_excluir_id:excluirId||0,p_tabla:'ambas'});
+    if(r&&r.length>0) setRfcWarn(`⚠️ RFC ya registrado como ${r[0].encontrado_en}: ${r[0].nombre}`);
+    else setRfcWarn('');
+  };
+
+  const save=async e=>{
+    e.preventDefault();setSaving(true);setMsg('');
+    try{
+      const obj={nombre:form.nombre,razon_social:form.razon_social,rfc:(form.rfc||'').toUpperCase().trim(),email:form.email,telefono:form.telefono,direccion:form.direccion,ciudad:form.ciudad,estado:form.estado,cp:form.cp,categoria:form.categoria,calificacion:parseInt(form.calificacion)||3,banco:form.banco,cuenta_banco:form.cuenta_banco,clabe:form.clabe,notas:form.notas,activo:form.activo!==false};
+      if(modal==='nuevo'){const{error}=await sb.from('proveedores').insert(obj);if(error)throw error;}
+      else{const{error}=await sb.from('proveedores').update(obj).eq('id',sel.id);if(error)throw error;}
+      setMsg('✅ Guardado correctamente');await load();
+      setTimeout(()=>{setModal(null);setMsg('');setRfcWarn('');},1100);
+    }catch(er){setMsg('❌ '+(er.message||'Error'));}
+    setSaving(false);
+  };
+
+  const saveCont=async e=>{
+    e.preventDefault();setSaving(true);
+    try{
+      const obj={proveedor_id:sel.id,nombre:formCont.nombre,puesto:formCont.puesto||'',email:formCont.email||'',telefono:formCont.telefono||'',es_principal:!!formCont.es_principal,notas:formCont.notas||''};
+      if(formCont.id){await sb.from('proveedor_contactos').update(obj).eq('id',formCont.id);}
+      else{await sb.from('proveedor_contactos').insert(obj);}
+      await loadContactos(sel.id);setModalCont(false);setFormCont({});
+    }catch(er){console.error(er);}
+    setSaving(false);
+  };
+
+  const estrellas=n=>'★'.repeat(n)+'☆'.repeat(5-n);
+  const cc=c=>c==='Materiales'?'blue':c==='Servicios'?'green':c==='Tecnología'?'purple':c==='Logística'?'orange':'gray';
+
+  return(
+    <div className="p-6 fade">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div><h1 className="text-2xl font-bold text-gray-800">Proveedores</h1><p className="text-sm text-gray-500">{filt.length} registros</p></div>
+        {isAdmin&&<Btn onClick={()=>{setForm(ef);setRfcWarn('');setModal('nuevo');setMsg('');}}>+ Nuevo proveedor</Btn>}
+      </div>
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar nombre, RFC, razón social..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 mb-4"/>
+      {loading?<Spin/>:filt.length===0?<Empty msg="Sin proveedores registrados"/>:(
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50 border-b border-gray-100">
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Proveedor</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden md:table-cell">RFC</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Categoría</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Calificación</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Estatus</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-600">Acciones</th>
+              </tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {filt.map(p=>(
+                  <tr key={p.id} className="hover:bg-gray-50/70 transition">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-800">{p.nombre}</p>
+                      <p className="text-xs text-gray-400">{p.razon_social||p.email||'—'}</p>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 font-mono text-xs hidden md:table-cell">{p.rfc||'—'}</td>
+                    <td className="px-4 py-3 hidden lg:table-cell"><Badge text={p.categoria||'—'} color={cc(p.categoria)}/></td>
+                    <td className="px-4 py-3 text-yellow-500 hidden lg:table-cell">{p.calificacion?estrellas(p.calificacion):'—'}</td>
+                    <td className="px-4 py-3"><Badge text={p.activo?'Activo':'Inactivo'} color={p.activo?'green':'red'}/></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadContactos(p.id);setModal('ver');}}>Ver</Btn>
+                        {isAdmin&&<Btn size="sm" color="outline" onClick={()=>{setSel(p);setForm({...p});setRfcWarn('');setModal('editar');setMsg('');}}>Editar</Btn>}
+                        {isAdmin&&<Btn size="sm" color={p.activo?'red':'green'} onClick={async()=>{await sb.from('proveedores').update({activo:!p.activo}).eq('id',p.id);load();}}>{p.activo?'Baja':'Alta'}</Btn>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal VER */}
+      {modal==='ver'&&sel&&(
+        <Modal title="Detalle del proveedor" onClose={()=>setModal(null)} size="lg">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {[['🏢 Nombre',sel.nombre],['📋 Razón social',sel.razon_social||'—'],['🔢 RFC',sel.rfc||'—'],['📧 Email',sel.email||'—'],['📞 Teléfono',sel.telefono||'—'],['📍 Dirección',sel.direccion||'—'],['🏙️ Ciudad',sel.ciudad||'—'],['🗺️ Estado',sel.estado||'—'],['📮 C.P.',sel.cp||'—'],['🏷️ Categoría',sel.categoria||'—'],['⭐ Calificación',sel.calificacion?estrellas(sel.calificacion):'—']].map(([k,v])=>(
+                <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
+              ))}
+            </div>
+            {(sel.banco||sel.cuenta_banco)&&(
+              <div className="bg-blue-50 rounded-xl p-4">
+                <p className="text-xs font-semibold text-gray-600 mb-2">🏦 Datos bancarios</p>
+                <div className="grid grid-cols-3 gap-3">
+                  {[['Banco',sel.banco],['Cuenta',sel.cuenta_banco],['CLABE',sel.clabe]].map(([k,v])=>(
+                    <div key={k}><p className="text-xs text-gray-500">{k}</p><p className="text-sm font-medium font-mono">{v||'—'}</p></div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Contactos */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-gray-700">👤 Contactos directos</p>
+                {isAdmin&&<Btn size="sm" onClick={()=>{setFormCont({});setModalCont(true);}}>+ Agregar</Btn>}
+              </div>
+              {contactos.length===0?<p className="text-sm text-gray-400 text-center py-4">Sin contactos registrados</p>:(
+                <div className="space-y-2">
+                  {contactos.map(c=>(
+                    <div key={c.id} className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-800">{c.nombre}</p>
+                          {c.es_principal&&<Badge text="Principal" color="blue"/>}
+                        </div>
+                        <p className="text-xs text-gray-500">{c.puesto||''}{c.puesto&&c.email?' · ':''}{c.email||''}</p>
+                        {c.telefono&&<p className="text-xs text-gray-500">📞 {c.telefono}</p>}
+                      </div>
+                      {isAdmin&&<div className="flex gap-1">
+                        <Btn size="sm" color="outline" onClick={()=>{setFormCont(c);setModalCont(true);}}>Editar</Btn>
+                        <Btn size="sm" color="red" onClick={async()=>{await sb.from('proveedor_contactos').delete().eq('id',c.id);loadContactos(sel.id);}}>×</Btn>
+                      </div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {sel.notas&&<div className="bg-yellow-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-1">📝 Notas</p><p className="text-sm">{sel.notas}</p></div>}
+          </div>
+          {modalCont&&(
+            <div className="modal-bg fixed inset-0 z-[60] flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 fade">
+                <h3 className="font-semibold text-gray-800 mb-4">{formCont.id?'Editar':'Nuevo'} contacto</h3>
+                <form onSubmit={saveCont} className="space-y-3">
+                  <Input label="Nombre" value={formCont.nombre||''} onChange={v=>setFormCont(f=>({...f,nombre:v}))} required/>
+                  <Input label="Puesto" value={formCont.puesto||''} onChange={v=>setFormCont(f=>({...f,puesto:v}))}/>
+                  <Input label="Email" type="email" value={formCont.email||''} onChange={v=>setFormCont(f=>({...f,email:v}))}/>
+                  <Input label="Teléfono" value={formCont.telefono||''} onChange={v=>setFormCont(f=>({...f,telefono:v}))}/>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={!!formCont.es_principal} onChange={e=>setFormCont(f=>({...f,es_principal:e.target.checked}))} className="accent-blue-600"/>Contacto principal</label>
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Btn color="gray" onClick={()=>setModalCont(false)}>Cancelar</Btn>
+                    <Btn type="submit" disabled={saving}>{saving?'Guardando...':'Guardar'}</Btn>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {/* Modal NUEVO/EDITAR */}
+      {(modal==='nuevo'||modal==='editar')&&(
+        <Modal title={modal==='nuevo'?'Nuevo proveedor':'Editar proveedor'} onClose={()=>{setModal(null);setRfcWarn('');}} size="xl">
+          <form onSubmit={save}>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Datos generales</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <Input label="Nombre comercial" value={form.nombre} onChange={v=>setForm(f=>({...f,nombre:v}))} required/>
+              <Input label="Razón social" value={form.razon_social} onChange={v=>setForm(f=>({...f,razon_social:v}))}/>
+              <div className="flex flex-col gap-1">
+                <Input label="RFC" value={form.rfc} onChange={v=>{setForm(f=>({...f,rfc:v.toUpperCase()}));checkRfc(v,modal==='editar'?sel.id:null);}}/>
+                {rfcWarn&&<p className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-lg">{rfcWarn}</p>}
+              </div>
+              <Input label="Email" type="email" value={form.email} onChange={v=>setForm(f=>({...f,email:v}))}/>
+              <Input label="Teléfono" value={form.telefono} onChange={v=>setForm(f=>({...f,telefono:v}))}/>
+              <Sel label="Categoría" value={form.categoria} onChange={v=>setForm(f=>({...f,categoria:v}))} options={['Materiales','Servicios','Tecnología','Logística','Consultoría','Otro'].map(c=>({value:c,label:c}))}/>
+              <Input label="Dirección" value={form.direccion} onChange={v=>setForm(f=>({...f,direccion:v}))} className="md:col-span-2"/>
+              <Input label="Ciudad" value={form.ciudad} onChange={v=>setForm(f=>({...f,ciudad:v}))}/>
+              <Input label="Estado" value={form.estado} onChange={v=>setForm(f=>({...f,estado:v}))}/>
+              <Input label="C.P." value={form.cp} onChange={v=>setForm(f=>({...f,cp:v}))}/>
+              <Sel label="Calificación" value={String(form.calificacion||3)} onChange={v=>setForm(f=>({...f,calificacion:parseInt(v)}))} options={[1,2,3,4,5].map(n=>({value:String(n),label:'★'.repeat(n)+'☆'.repeat(5-n)}))}/>
+            </div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Datos bancarios (opcional)</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <Input label="Banco" value={form.banco||''} onChange={v=>setForm(f=>({...f,banco:v}))}/>
+              <Input label="No. de cuenta" value={form.cuenta_banco||''} onChange={v=>setForm(f=>({...f,cuenta_banco:v}))}/>
+              <Input label="CLABE interbancaria" value={form.clabe||''} onChange={v=>setForm(f=>({...f,clabe:v}))}/>
+            </div>
+            <Textarea label="Notas" value={form.notas} onChange={v=>setForm(f=>({...f,notas:v}))}/>
+            {modal==='editar'&&<label className="flex items-center gap-2 text-sm mt-3 cursor-pointer"><input type="checkbox" checked={!!form.activo} onChange={e=>setForm(f=>({...f,activo:e.target.checked}))} className="accent-blue-600"/>Proveedor activo</label>}
+            {msg&&<p className="mt-3 text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+            <div className="flex justify-end gap-2 mt-5"><Btn color="gray" onClick={()=>{setModal(null);setRfcWarn('');}}>Cancelar</Btn><Btn type="submit" disabled={saving}>{saving?'Guardando...':'Guardar proveedor'}</Btn></div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CLIENTES
+// ═══════════════════════════════════════════════════════════════
+function ClientesModule({user}){
+  const[data,setData]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[search,setSearch]=useState('');
+  const[fSeg,setFSeg]=useState('');
+  const[modal,setModal]=useState(null);
+  const[sel,setSel]=useState(null);
+  const[form,setForm]=useState({});
+  const[contactos,setContactos]=useState([]);
+  const[formCont,setFormCont]=useState({});
+  const[modalCont,setModalCont]=useState(false);
+  const[saving,setSaving]=useState(false);
+  const[msg,setMsg]=useState('');
+  const[rfcWarn,setRfcWarn]=useState('');
+  const canEdit=user.rol==='Administrador'||user.perm_clientes;
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const{data:d}=await sb.from('clientes').select('*').order('nombre');
+    setData(d||[]);setLoading(false);
+  },[]);
+  useEffect(()=>{load();},[load]);
+
+  const loadContactos=async(cliId)=>{
+    const{data:c}=await sb.from('contactos').select('*').eq('cliente_id',cliId).order('es_principal',{ascending:false});
+    setContactos(c||[]);
+  };
+
+  const filt=useMemo(()=>(data||[]).filter(c=>{
+    const q=search.toLowerCase();
+    return(!q||(c.nombre||'').toLowerCase().includes(q)||(c.rfc||'').toLowerCase().includes(q)||(c.razon_social||'').toLowerCase().includes(q)||(c.empresa||'').toLowerCase().includes(q))&&(!fSeg||c.segmento===fSeg);
+  }),[data,search,fSeg]);
+
+  const ef={nombre:'',razon_social:'',empresa:'',rfc:'',email:'',telefono:'',direccion:'',ciudad:'',estado:'',cp:'',segmento:'Empresa',estatus:'Activo',notas:'',activo:true};
+
+  const checkRfc=async(rfc,excluirId=null)=>{
+    if(!rfc||rfc.length<5){setRfcWarn('');return;}
+    const{data:r}=await sb.rpc('fn_verificar_rfc',{p_rfc:rfc,p_excluir_id:excluirId||0,p_tabla:'ambas'});
+    if(r&&r.length>0) setRfcWarn(`⚠️ RFC ya registrado como ${r[0].encontrado_en}: ${r[0].nombre}`);
+    else setRfcWarn('');
+  };
+
+  const save=async e=>{
+    e.preventDefault();setSaving(true);setMsg('');
+    try{
+      const obj={nombre:form.nombre,razon_social:form.razon_social||'',empresa:form.empresa||form.nombre,rfc:(form.rfc||'').toUpperCase().trim(),email:form.email||'',telefono:form.telefono||'',direccion:form.direccion||'',ciudad:form.ciudad||'',estado:form.estado||'',cp:form.cp||'',segmento:form.segmento||'Empresa',estatus:form.estatus||'Activo',notas:form.notas||'',activo:form.activo!==false};
+      if(modal==='nuevo'){const{error}=await sb.from('clientes').insert(obj);if(error)throw error;}
+      else{const{error}=await sb.from('clientes').update(obj).eq('id',sel.id);if(error)throw error;}
+      setMsg('✅ Guardado correctamente');await load();
+      setTimeout(()=>{setModal(null);setMsg('');setRfcWarn('');},1100);
+    }catch(er){setMsg('❌ '+(er.message||'Error'));}
+    setSaving(false);
+  };
+
+  const saveCont=async e=>{
+    e.preventDefault();setSaving(true);
+    try{
+      const obj={cliente_id:sel.id,nombre:formCont.nombre,puesto:formCont.puesto||'',email:formCont.email||'',telefono:formCont.telefono||'',es_principal:!!formCont.es_principal,notas:formCont.notas||''};
+      if(formCont.id){await sb.from('contactos').update(obj).eq('id',formCont.id);}
+      else{await sb.from('contactos').insert(obj);}
+      await loadContactos(sel.id);setModalCont(false);setFormCont({});
+    }catch(er){console.error(er);}
+    setSaving(false);
+  };
+
+  const sc=s=>s==='Empresa'?'blue':s==='Gobierno'?'purple':s==='PyME'?'green':'gray';
+  const se=s=>s==='Activo'?'green':s==='Prospecto'?'yellow':'red';
+
+  return(
+    <div className="p-6 fade">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div><h1 className="text-2xl font-bold text-gray-800">Clientes</h1><p className="text-sm text-gray-500">{filt.length} registros</p></div>
+        {canEdit&&<Btn onClick={()=>{setForm(ef);setRfcWarn('');setModal('nuevo');setMsg('');}}>+ Nuevo cliente</Btn>}
+      </div>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar nombre, RFC, razón social..." className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 flex-1 min-w-48"/>
+        <select value={fSeg} onChange={e=>setFSeg(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+          <option value="">Todos los segmentos</option>
+          {['Empresa','Gobierno','PyME','Persona física'].map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      {loading?<Spin/>:filt.length===0?<Empty msg="Sin clientes registrados"/>:(
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50 border-b border-gray-100">
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Cliente</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden md:table-cell">RFC</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Ciudad</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Segmento</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Estatus</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-600">Acciones</th>
+              </tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {filt.map(c=>(
+                  <tr key={c.id} className="hover:bg-gray-50/70 transition">
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-800">{c.nombre}</p>
+                      <p className="text-xs text-gray-400">{c.razon_social||c.email||'—'}</p>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 font-mono text-xs hidden md:table-cell">{c.rfc||'—'}</td>
+                    <td className="px-4 py-3 text-gray-500 hidden lg:table-cell">{c.ciudad||'—'}</td>
+                    <td className="px-4 py-3"><Badge text={c.segmento||'—'} color={sc(c.segmento)}/></td>
+                    <td className="px-4 py-3"><Badge text={c.estatus||'Activo'} color={se(c.estatus)}/></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <Btn size="sm" color="outline" onClick={async()=>{setSel(c);await loadContactos(c.id);setModal('ver');}}>Ver</Btn>
+                        {canEdit&&<Btn size="sm" color="outline" onClick={()=>{setSel(c);setForm({...c});setRfcWarn('');setModal('editar');setMsg('');}}>Editar</Btn>}
+                        {canEdit&&<Btn size="sm" color={c.activo?'red':'green'} onClick={async()=>{await sb.from('clientes').update({activo:!c.activo,estatus:c.activo?'Inactivo':'Activo'}).eq('id',c.id);load();}}>{c.activo?'Baja':'Alta'}</Btn>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal VER */}
+      {modal==='ver'&&sel&&(
+        <Modal title="Detalle del cliente" onClose={()=>setModal(null)} size="lg">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {[['🏢 Nombre',sel.nombre],['📋 Razón social',sel.razon_social||'—'],['🔢 RFC',sel.rfc||'—'],['📧 Email',sel.email||'—'],['📞 Teléfono',sel.telefono||'—'],['📍 Dirección',sel.direccion||'—'],['🏙️ Ciudad',sel.ciudad||'—'],['🗺️ Estado',sel.estado||'—'],['📮 C.P.',sel.cp||'—'],['🏷️ Segmento',sel.segmento||'—'],['📊 Estatus',sel.estatus||'—']].map(([k,v])=>(
+                <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
+              ))}
+            </div>
+            {/* Contactos */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-gray-700">👤 Contactos</p>
+                {canEdit&&<Btn size="sm" onClick={()=>{setFormCont({});setModalCont(true);}}>+ Agregar</Btn>}
+              </div>
+              {contactos.length===0?<p className="text-sm text-gray-400 text-center py-4">Sin contactos registrados</p>:(
+                <div className="space-y-2">
+                  {contactos.map(c=>(
+                    <div key={c.id} className="flex items-center justify-between bg-gray-50 rounded-xl p-3">
+                      <div>
+                        <div className="flex items-center gap-2"><p className="text-sm font-medium text-gray-800">{c.nombre}</p>{c.es_principal&&<Badge text="Principal" color="blue"/>}</div>
+                        <p className="text-xs text-gray-500">{c.puesto||''}{c.puesto&&c.email?' · ':''}{c.email||''}</p>
+                        {c.telefono&&<p className="text-xs text-gray-500">📞 {c.telefono}</p>}
+                      </div>
+                      {canEdit&&<div className="flex gap-1">
+                        <Btn size="sm" color="outline" onClick={()=>{setFormCont(c);setModalCont(true);}}>Editar</Btn>
+                        <Btn size="sm" color="red" onClick={async()=>{await sb.from('contactos').delete().eq('id',c.id);loadContactos(sel.id);}}>×</Btn>
+                      </div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {sel.notas&&<div className="bg-yellow-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-1">📝 Notas</p><p className="text-sm">{sel.notas}</p></div>}
+          </div>
+          {modalCont&&(
+            <div className="modal-bg fixed inset-0 z-[60] flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 fade">
+                <h3 className="font-semibold text-gray-800 mb-4">{formCont.id?'Editar':'Nuevo'} contacto</h3>
+                <form onSubmit={saveCont} className="space-y-3">
+                  <Input label="Nombre" value={formCont.nombre||''} onChange={v=>setFormCont(f=>({...f,nombre:v}))} required/>
+                  <Input label="Puesto" value={formCont.puesto||''} onChange={v=>setFormCont(f=>({...f,puesto:v}))}/>
+                  <Input label="Email" type="email" value={formCont.email||''} onChange={v=>setFormCont(f=>({...f,email:v}))}/>
+                  <Input label="Teléfono" value={formCont.telefono||''} onChange={v=>setFormCont(f=>({...f,telefono:v}))}/>
+                  <label className="flex items-center gap-2 text-sm cursor-pointer"><input type="checkbox" checked={!!formCont.es_principal} onChange={e=>setFormCont(f=>({...f,es_principal:e.target.checked}))} className="accent-blue-600"/>Contacto principal</label>
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Btn color="gray" onClick={()=>setModalCont(false)}>Cancelar</Btn>
+                    <Btn type="submit" disabled={saving}>{saving?'Guardando...':'Guardar'}</Btn>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {/* Modal NUEVO/EDITAR */}
+      {(modal==='nuevo'||modal==='editar')&&(
+        <Modal title={modal==='nuevo'?'Nuevo cliente':'Editar cliente'} onClose={()=>{setModal(null);setRfcWarn('');}} size="xl">
+          <form onSubmit={save}>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Datos generales</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <Input label="Nombre comercial" value={form.nombre} onChange={v=>setForm(f=>({...f,nombre:v}))} required/>
+              <Input label="Razón social" value={form.razon_social||''} onChange={v=>setForm(f=>({...f,razon_social:v}))}/>
+              <div className="flex flex-col gap-1">
+                <Input label="RFC" value={form.rfc||''} onChange={v=>{setForm(f=>({...f,rfc:v.toUpperCase()}));checkRfc(v,modal==='editar'?sel.id:null);}}/>
+                {rfcWarn&&<p className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-lg">{rfcWarn}</p>}
+              </div>
+              <Input label="Email" type="email" value={form.email||''} onChange={v=>setForm(f=>({...f,email:v}))}/>
+              <Input label="Teléfono" value={form.telefono||''} onChange={v=>setForm(f=>({...f,telefono:v}))}/>
+              <Sel label="Segmento" value={form.segmento||'Empresa'} onChange={v=>setForm(f=>({...f,segmento:v}))} options={['Empresa','Gobierno','PyME','Persona física'].map(s=>({value:s,label:s}))}/>
+              <Input label="Dirección" value={form.direccion||''} onChange={v=>setForm(f=>({...f,direccion:v}))} className="md:col-span-2"/>
+              <Input label="Ciudad" value={form.ciudad||''} onChange={v=>setForm(f=>({...f,ciudad:v}))}/>
+              <Input label="Estado" value={form.estado||''} onChange={v=>setForm(f=>({...f,estado:v}))}/>
+              <Input label="C.P." value={form.cp||''} onChange={v=>setForm(f=>({...f,cp:v}))}/>
+              <Sel label="Estatus" value={form.estatus||'Activo'} onChange={v=>setForm(f=>({...f,estatus:v}))} options={['Activo','Prospecto','Inactivo'].map(s=>({value:s,label:s}))}/>
+            </div>
+            <Textarea label="Notas" value={form.notas||''} onChange={v=>setForm(f=>({...f,notas:v}))}/>
+            {msg&&<p className="mt-3 text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+            <div className="flex justify-end gap-2 mt-5"><Btn color="gray" onClick={()=>{setModal(null);setRfcWarn('');}}>Cancelar</Btn><Btn type="submit" disabled={saving}>{saving?'Guardando...':'Guardar cliente'}</Btn></div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function Pronto({titulo,icon,semana}){
   return(<div className="p-6 flex items-center justify-center min-h-96 fade"><div className="text-center"><div className="text-6xl mb-4">{icon}</div><h2 className="text-xl font-bold text-gray-700">{titulo}</h2><p className="text-gray-400 text-sm mt-2">Módulo en construcción</p><div className="mt-4 bg-blue-50 text-blue-600 text-sm px-4 py-2 rounded-xl inline-block">Próximamente — Semana {semana}</div></div></div>);
 }
@@ -989,6 +1423,8 @@ function App(){
         {mod==='dashboard'&&<Dashboard user={user}/>}
         {mod==='rrhh'&&<RRHHModule user={user}/>}
         {mod==='ventas'&&<Pronto titulo="Ventas / CRM" icon="💼" semana="2"/>}
+        {mod==='proveedores'&&<ProveedoresModule user={user}/>}
+        {mod==='clientes'&&<ClientesModule user={user}/>}
         {mod==='finanzas'&&<Pronto titulo="Finanzas" icon="💰" semana="2"/>}
         {mod==='proyectos'&&<Pronto titulo="Proyectos y Operaciones" icon="🏗️" semana="3"/>}
         {mod==='calidad'&&<Pronto titulo="Calidad" icon="✅" semana="3"/>}
