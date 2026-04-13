@@ -979,6 +979,8 @@ function RRHHModule({user}){
 // ═══════════════════════════════════════════════════════════════
 // PROVEEDORES
 // ═══════════════════════════════════════════════════════════════
+const ACTS_DEFAULT=['Aforos','Análisis','Asesorías en Estudio','Barridos','Captura','Codificación','Conteo Poblacional','Coordinación de Proyectos','Copias','Encuestas online','Encuestas Personales','Encuestas Telefónicas','Entrevista a Profundidad','Fuentes Secundarias','Gastos a Comprobar','Geolocalización','Incentivos Vales','Levantamiento de precios','Materiales/Regalos/Incentivos','Moderación','Mystery Shopper Internet','Mystery Shopper Personal','Mystery Shopper Telefónica','Otros Servicios','Reclutamiento','Renta de salas','Servicio de mesero','Supervisión Presencial','Supervisión Telefónica','Traducciones','Transcripciones','Varios','Viáticos'];
+
 function ProveedoresModule({user}){
   const[data,setData]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -992,7 +994,12 @@ function ProveedoresModule({user}){
   const[saving,setSaving]=useState(false);
   const[msg,setMsg]=useState('');
   const[rfcWarn,setRfcWarn]=useState('');
+  const[actividades,setActividades]=useState(ACTS_DEFAULT);
+  const[modalActs,setModalActs]=useState(false);
+  const[nuevaAct,setNuevaAct]=useState('');
+  const[savingAct,setSavingAct]=useState(false);
   const isAdmin=user.rol==='Administrador'||user.rol==='Gerente'||user.perm_proveedores;
+  const isSuperAdmin=user.rol==='Administrador';
 
   const load=useCallback(async()=>{
     setLoading(true);
@@ -1000,6 +1007,12 @@ function ProveedoresModule({user}){
     setData(d||[]);setLoading(false);
   },[]);
   useEffect(()=>{load();},[load]);
+
+  const loadActividades=useCallback(async()=>{
+    const{data:a,error}=await sb.from('actividades_proveedor').select('*').eq('activo',true).order('orden');
+    if(!error&&a&&a.length>0) setActividades(a.map(x=>x.nombre));
+  },[]);
+  useEffect(()=>{loadActividades();},[loadActividades]);
 
   const loadContactos=async(provId)=>{
     const{data:c}=await sb.from('proveedor_contactos').select('*').eq('proveedor_id',provId).order('es_principal',{ascending:false});
@@ -1011,7 +1024,7 @@ function ProveedoresModule({user}){
     return !q||(p.nombre||'').toLowerCase().includes(q)||(p.rfc||'').toLowerCase().includes(q)||(p.razon_social||'').toLowerCase().includes(q);
   }),[data,search]);
 
-  const ef={nombre:'',razon_social:'',rfc:'',email:'',telefono:'',direccion:'',ciudad:'',estado:'',cp:'',categoria:'Materiales',calificacion:3,banco:'',cuenta_banco:'',clabe:'',notas:'',activo:true};
+  const ef={nombre:'',razon_social:'',rfc:'',email:'',telefono:'',direccion:'',ciudad:'',estado:'',cp:'',categoria:actividades[0]||'Aforos',calificacion:3,banco:'',cuenta_banco:'',clabe:'',notas:'',activo:true};
 
   const checkRfc=async(rfc,excluirId=null)=>{
     if(!rfc||rfc.length<5){setRfcWarn('');return;}
@@ -1044,13 +1057,32 @@ function ProveedoresModule({user}){
   };
 
   const estrellas=n=>'★'.repeat(n)+'☆'.repeat(5-n);
-  const cc=c=>c==='Materiales'?'blue':c==='Servicios'?'green':c==='Tecnología'?'purple':c==='Logística'?'orange':'gray';
+  const cc=()=>'blue';
+
+  const addActividad=async e=>{
+    e.preventDefault();
+    const nom=(nuevaAct||'').trim();
+    if(!nom)return;
+    setSavingAct(true);
+    const{error}=await sb.from('actividades_proveedor').insert({nombre:nom,orden:actividades.length+1});
+    if(!error){await loadActividades();setNuevaAct('');}
+    setSavingAct(false);
+  };
+
+  const delActividad=async(nombre)=>{
+    if(!confirm(`¿Eliminar "${nombre}"?`))return;
+    await sb.from('actividades_proveedor').delete().eq('nombre',nombre);
+    await loadActividades();
+  };
 
   return(
     <div className="p-6 fade">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Proveedores</h1><p className="text-sm text-gray-500">{filt.length} registros</p></div>
-        {isAdmin&&<Btn onClick={()=>{setForm(ef);setRfcWarn('');setModal('nuevo');setMsg('');}}>+ Nuevo proveedor</Btn>}
+        <div className="flex gap-2 flex-wrap">
+          {isSuperAdmin&&<Btn color="outline" onClick={()=>setModalActs(true)}>⚙️ Gestionar actividades</Btn>}
+          {isAdmin&&<Btn onClick={()=>{setForm({...ef,categoria:actividades[0]||'Aforos'});setRfcWarn('');setModal('nuevo');setMsg('');}}>+ Nuevo proveedor</Btn>}
+        </div>
       </div>
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar nombre, RFC, razón social..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 mb-4"/>
       {loading?<Spin/>:filt.length===0?<Empty msg="Sin proveedores registrados"/>:(
@@ -1060,7 +1092,7 @@ function ProveedoresModule({user}){
               <thead><tr className="bg-gray-50 border-b border-gray-100">
                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Proveedor</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden md:table-cell">RFC</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Categoría</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Actividad</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Calificación</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-600">Estatus</th>
                 <th className="px-4 py-3 text-right font-semibold text-gray-600">Acciones</th>
@@ -1096,7 +1128,7 @@ function ProveedoresModule({user}){
         <Modal title="Detalle del proveedor" onClose={()=>setModal(null)} size="lg">
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[['🏢 Nombre',sel.nombre],['📋 Razón social',sel.razon_social||'—'],['🔢 RFC',sel.rfc||'—'],['📧 Email',sel.email||'—'],['📞 Teléfono',sel.telefono||'—'],['📍 Dirección',sel.direccion||'—'],['🏙️ Ciudad',sel.ciudad||'—'],['🗺️ Estado',sel.estado||'—'],['📮 C.P.',sel.cp||'—'],['🏷️ Categoría',sel.categoria||'—'],['⭐ Calificación',sel.calificacion?estrellas(sel.calificacion):'—']].map(([k,v])=>(
+              {[['🏢 Nombre',sel.nombre],['📋 Razón social',sel.razon_social||'—'],['🔢 RFC',sel.rfc||'—'],['📧 Email',sel.email||'—'],['📞 Teléfono',sel.telefono||'—'],['📍 Dirección',sel.direccion||'—'],['🏙️ Ciudad',sel.ciudad||'—'],['🗺️ Estado',sel.estado||'—'],['📮 C.P.',sel.cp||'—'],['🏷️ Actividad',sel.categoria||'—'],['⭐ Calificación',sel.calificacion?estrellas(sel.calificacion):'—']].map(([k,v])=>(
                 <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
               ))}
             </div>
@@ -1174,7 +1206,7 @@ function ProveedoresModule({user}){
               </div>
               <Input label="Email" type="email" value={form.email} onChange={v=>setForm(f=>({...f,email:v}))}/>
               <Input label="Teléfono" value={form.telefono} onChange={v=>setForm(f=>({...f,telefono:v}))}/>
-              <Sel label="Categoría" value={form.categoria} onChange={v=>setForm(f=>({...f,categoria:v}))} options={['Materiales','Servicios','Tecnología','Logística','Consultoría','Otro'].map(c=>({value:c,label:c}))}/>
+              <Sel label="Actividad" value={form.categoria} onChange={v=>setForm(f=>({...f,categoria:v}))} options={actividades.map(c=>({value:c,label:c}))}/>
               <Input label="Dirección" value={form.direccion} onChange={v=>setForm(f=>({...f,direccion:v}))} className="md:col-span-2"/>
               <Input label="Ciudad" value={form.ciudad} onChange={v=>setForm(f=>({...f,ciudad:v}))}/>
               <Input label="Estado" value={form.estado} onChange={v=>setForm(f=>({...f,estado:v}))}/>
@@ -1192,6 +1224,28 @@ function ProveedoresModule({user}){
             {msg&&<p className="mt-3 text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
             <div className="flex justify-end gap-2 mt-5"><Btn color="gray" onClick={()=>{setModal(null);setRfcWarn('');}}>Cancelar</Btn><Btn type="submit" disabled={saving}>{saving?'Guardando...':'Guardar proveedor'}</Btn></div>
           </form>
+        </Modal>
+      )}
+
+      {/* Modal GESTIONAR ACTIVIDADES */}
+      {modalActs&&(
+        <Modal title="⚙️ Gestionar actividades" onClose={()=>setModalActs(false)} size="md">
+          <div className="space-y-4">
+            <p className="text-xs text-gray-500">Lista de actividades disponibles para clasificar proveedores. Solo el Administrador puede editarla.</p>
+            <form onSubmit={addActividad} className="flex gap-2">
+              <input value={nuevaAct} onChange={e=>setNuevaAct(e.target.value)} placeholder="Nueva actividad..." className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"/>
+              <Btn type="submit" disabled={savingAct||!nuevaAct.trim()}>{savingAct?'...':'+ Agregar'}</Btn>
+            </form>
+            <div className="max-h-96 overflow-y-auto space-y-1">
+              {actividades.map((a,i)=>(
+                <div key={i} className="flex items-center justify-between bg-gray-50 hover:bg-gray-100 rounded-lg px-3 py-2 text-sm text-gray-700">
+                  <span>{a}</span>
+                  <button onClick={()=>delActividad(a)} className="text-red-400 hover:text-red-600 text-lg leading-none font-bold ml-2" title="Eliminar">×</button>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 text-right">{actividades.length} actividades registradas</p>
+          </div>
         </Modal>
       )}
     </div>
