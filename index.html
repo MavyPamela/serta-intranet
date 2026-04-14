@@ -176,26 +176,28 @@ function Sidebar({user,active,setActive,onLogout}){
 
 // DASHBOARD ─────────────────────────────────────────────────────
 function Dashboard({user}){
-  const[s,setS]=useState({emp:0,vac:0,proy:0,cli:0,cumples:[]});
+  const[s,setS]=useState({emp:0,vac:0,proy:0,cli:0,cumples:[],reqsPendientes:[]});
+  const canAprobar=user.rol==='Administrador'||user.perm_aprobar_req||user.perm_autorizar_proyectos;
   useEffect(()=>{
     (async()=>{
       const hoy=new Date();
       const mes=String(hoy.getMonth()+1).padStart(2,'0');
-      const[e,v,p,c,cb]=await Promise.all([
+      const[e,v,p,c,cb,rq]=await Promise.all([
         sb.from('empleados').select('id',{count:'exact',head:true}).eq('activo',true),
         sb.from('vacaciones').select('id',{count:'exact',head:true}).eq('estatus','Pendiente'),
         sb.from('proyectos').select('id',{count:'exact',head:true}).eq('estatus','En Progreso'),
         sb.from('clientes').select('id',{count:'exact',head:true}).eq('activo',true),
         sb.from('empleados').select('nombre,fecha_nacimiento,foto_url').eq('activo',true).not('fecha_nacimiento','is',null),
+        canAprobar?sb.from('requisiciones').select('id,numero_requisicion,descripcion,total_pago,proyectos(nombre),proveedores(nombre),creador:empleados!requisiciones_creado_por_fkey(nombre)').eq('status','Pendiente').eq('director_id',user.id).order('created_at',{ascending:false}).limit(10):{data:[]},
       ]);
       const cumples=(cb.data||[]).filter(e=>{
         if(!e.fecha_nacimiento)return false;
         const m=e.fecha_nacimiento.split('-')[1];
         return m===mes;
       });
-      setS({emp:e.count||0,vac:v.count||0,proy:p.count||0,cli:c.count||0,cumples});
+      setS({emp:e.count||0,vac:v.count||0,proy:p.count||0,cli:c.count||0,cumples,reqsPendientes:rq.data||[]});
     })();
-  },[]);
+  },[canAprobar,user.id]);
   const h=new Date().getHours();
   const sal=h<12?'Buenos días':h<18?'Buenas tardes':'Buenas noches';
   return(
@@ -224,6 +226,36 @@ function Dashboard({user}){
               </div>
             ))}
           </div>
+        </div>
+      )}
+      {/* Requisiciones pendientes de autorizar */}
+      {canAprobar&&s.reqsPendientes.length>0&&(
+        <div className="bg-white rounded-2xl border-2 border-orange-200 p-5 shadow-sm mb-5">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-xl">⏳</span>
+            <h2 className="font-semibold text-gray-800">Requisiciones por autorizar</h2>
+            <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">{s.reqsPendientes.length}</span>
+          </div>
+          <div className="space-y-2">
+            {s.reqsPendientes.map(r=>(
+              <div key={r.id} className="flex items-center justify-between bg-orange-50 rounded-xl px-4 py-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm font-bold text-orange-700">#{r.numero_requisicion}</span>
+                    <span className="text-sm font-medium text-gray-800">{r.proyectos?.nombre||'—'}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {r.proveedores?.nombre||'—'} · Solicitado por {r.creador?.nombre||'—'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-gray-800">{fmt(r.total_pago)}</p>
+                  <p className="text-xs text-orange-600 font-medium">Pendiente</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-3">Ve a <span className="font-medium text-blue-600">Requisiciones</span> para autorizar o ver el detalle.</p>
         </div>
       )}
       <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
@@ -2684,7 +2716,7 @@ function calcImpuestos(subtotal, regimen){
   return{iva, ret_iva, ret_isr, total};
 }
 
-const REQ_STATUS_COLOR={Borrador:'gray',Enviada:'blue',Autorizada:'green','Pago en proceso':'orange',Pagada:'purple',Cancelada:'red'};
+const REQ_STATUS_COLOR={Pendiente:'blue',Autorizada:'green','Pago en proceso':'orange',Pagada:'purple',Cancelada:'red'};
 const AREAS_OPT=['Calidad en el trabajo entregado','Precio adecuado','Disponibilidad y posibilidad de contactarlo','Puntualidad en entrega'];
 
 function RequisicionesModule({user}){
@@ -2749,7 +2781,7 @@ function RequisicionesModule({user}){
 
   // Tabs
   const misReqs     = rows.filter(r=>r.creado_por===user.id);
-  const porAutorizar= rows.filter(r=>r.director_id===user.id&&r.status==='Enviada');
+  const porAutorizar= rows.filter(r=>r.director_id===user.id&&r.status==='Pendiente');
   const filtered    = useMemo(()=>{
     const base=tab==='mis'?misReqs:tab==='autorizar'?porAutorizar:rows;
     if(!search)return base;
@@ -2825,7 +2857,7 @@ function RequisicionesModule({user}){
         }));
         if(items.length)await sb.from('req_items').insert(items);
       }
-      setMsg(statusFinal==='Enviada'?'✅ Requisición enviada para autorización':'✅ Guardada como borrador');
+      setMsg('✅ Requisición registrada — pendiente de autorización por el director');
       await load();
       setTimeout(()=>{setModal(null);setMsg('');},1000);
     }catch(e){setMsg('❌ '+e.message);}
@@ -2958,7 +2990,7 @@ SERTA de México`
                   <td className="px-3 py-3">
                     <div className="flex gap-1">
                       <button onClick={()=>openView(r)} className="text-xs text-gray-400 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50 transition">Ver</button>
-                      {canAprobar&&r.status==='Enviada'&&r.director_id===user.id&&(
+                      {canAprobar&&r.status==='Pendiente'&&r.director_id===user.id&&(
                         <button onClick={()=>{setSel(r);setModal('autorizar');}} className="text-xs text-green-600 hover:text-green-700 px-2 py-1 rounded hover:bg-green-50 transition font-medium">Autorizar</button>
                       )}
                       {(canAll||user.perm_finanzas)&&(r.status==='Autorizada'||r.status==='Pago en proceso')&&(
@@ -3063,9 +3095,8 @@ SERTA de México`
             {msg&&<p className="text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
             <div className="flex justify-end gap-2">
               <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
-              <Btn color="outline" disabled={saving||!form.proyecto_id||!form.proveedor_id} onClick={()=>save('Borrador')}>Guardar borrador</Btn>
-              <Btn color="green" disabled={saving||!form.proyecto_id||!form.proveedor_id||!form.director_id} onClick={()=>save('Enviada')}>
-                {saving?'Enviando...':'📤 Enviar para autorización'}
+              <Btn color="blue" disabled={saving||!form.proyecto_id||!form.proveedor_id||!form.director_id} onClick={()=>save('Pendiente')}>
+                {saving?'Guardando...':'💾 Guardar requisición'}
               </Btn>
             </div>
           </div>
@@ -3168,14 +3199,13 @@ SERTA de México`
               </div>
               <div className="flex gap-2">
                 {sel.status==='Autorizada'&&<Btn size="sm" onClick={()=>sendEmail(sel)}>📧 Enviar correo al proveedor</Btn>}
-                {canAprobar&&sel.status==='Enviada'&&sel.director_id===user.id&&(
+                {canAprobar&&sel.status==='Pendiente'&&sel.director_id===user.id&&(
                   <><Btn size="sm" color="green" onClick={()=>cambiarStatus(sel,'Autorizada')}>✓ Autorizar</Btn>
-                  <Btn size="sm" color="red" onClick={()=>setModal('cancelar')}>✗ Cancelar</Btn></>
+                  <Btn size="sm" color="red" onClick={()=>setModal('cancelar')}>✗ Rechazar</Btn></>
                 )}
                 {(canAll||user.perm_finanzas)&&sel.status==='Autorizada'&&<Btn size="sm" color="outline" onClick={()=>cambiarStatus(sel,'Pago en proceso')}>→ Pago en proceso</Btn>}
                 {(canAll||user.perm_finanzas)&&sel.status==='Pago en proceso'&&<Btn size="sm" color="green" onClick={()=>cambiarStatus(sel,'Pagada')}>✓ Confirmar pago</Btn>}
-                {sel.status==='Borrador'&&sel.creado_por===user.id&&<Btn size="sm" color="outline" onClick={()=>cambiarStatus(sel,'Enviada')}>📤 Enviar para autorización</Btn>}
-                {['Borrador','Enviada'].includes(sel.status)&&(sel.creado_por===user.id||canAprobar)&&<Btn size="sm" color="red" onClick={()=>setModal('cancelar')}>Cancelar req.</Btn>}
+                {sel.status==='Pendiente'&&(sel.creado_por===user.id||canAprobar)&&<Btn size="sm" color="red" onClick={()=>setModal('cancelar')}>Cancelar req.</Btn>}
               </div>
             </div>
           </div>
