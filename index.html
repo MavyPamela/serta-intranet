@@ -10,15 +10,38 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','sans-serif']},colors:{navy:{DEFAULT:'#0a1628',mid:'#122040',light:'#1e3a5f'},brand:{DEFAULT:'#1a56db',light:'#3b82f6',pale:'#dbeafe'}}}}}</script>
+  <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','sans-serif']},colors:{navy:{DEFAULT:'#2c3e50',mid:'#34495e',light:'#3d5166',dark:'#1a252f'},brand:{DEFAULT:'#00b5b5',light:'#00d0d0',pale:'#e0f7f7',dark:'#008a8a'},serta:{gray:'#3d5166',teal:'#00b5b5'}}}}}</script>
   <style>
-    body{font-family:'Inter',sans-serif;}
+    body{font-family:'Inter',sans-serif;background:#f4f6f9;}
     ::-webkit-scrollbar{width:5px;height:5px;}
     ::-webkit-scrollbar-track{background:#f1f5f9;}
-    ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px;}
-    .fade{animation:fadeIn .15s ease;}
-    @keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
-    .modal-bg{background:rgba(0,0,0,.45);}
+    ::-webkit-scrollbar-thumb{background:#b0bec5;border-radius:3px;}
+    .fade{animation:fadeIn .18s ease;}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+    .modal-bg{background:rgba(15,25,40,.55);backdrop-filter:blur(2px);}
+    .sidebar-item-active{background:linear-gradient(90deg,#00b5b5,#00d0d0);box-shadow:0 2px 8px rgba(0,181,181,.35);}
+    .card-hover{transition:box-shadow .18s,transform .18s;}
+    .card-hover:hover{box-shadow:0 8px 24px rgba(0,0,0,.10);transform:translateY(-1px);}
+    /* Global input/select/textarea focus — brand teal */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+    select, textarea {
+      border-color: #e5e7eb;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+    select:focus, textarea:focus {
+      outline: none !important;
+      border-color: #00b5b5 !important;
+      box-shadow: 0 0 0 3px rgba(0,181,181,.15) !important;
+    }
+    /* Table header style */
+    table thead th {
+      font-size: .75rem;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #6b7280;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body class="bg-gray-50">
@@ -39,34 +62,45 @@ const anioActual=new Date().getFullYear();
 
 // ── Componentes base ──────────────────────────────────────────
 const Btn=({children,onClick,color='blue',size='md',disabled,type='button',className=''})=>{
-  const c=color==='blue'?'bg-brand hover:bg-brand-light text-white':color==='red'?'bg-red-600 hover:bg-red-700 text-white':color==='green'?'bg-green-600 hover:bg-green-700 text-white':color==='gray'?'bg-gray-200 hover:bg-gray-300 text-gray-700':'bg-white border border-gray-300 hover:bg-gray-50 text-gray-700';
-  const s=size==='sm'?'px-3 py-1 text-xs':'px-4 py-2 text-sm';
-  return <button type={type} onClick={onClick} disabled={disabled} className={`${c} ${s} rounded-lg font-medium transition disabled:opacity-50 ${className}`}>{children}</button>;
+  const c=color==='blue'?'text-white font-semibold shadow-sm':color==='red'?'bg-red-500 hover:bg-red-600 text-white':color==='green'?'bg-emerald-500 hover:bg-emerald-600 text-white':color==='gray'?'bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200':'bg-white border border-gray-200 hover:bg-gray-50 text-gray-700';
+  const s=size==='sm'?'px-3 py-1.5 text-xs':'px-5 py-2.5 text-sm';
+  const blueStyle=color==='blue'?{background:'linear-gradient(90deg,#00b5b5,#00c8c8)',boxShadow:'0 2px 8px rgba(0,181,181,.3)'}:{};
+  return <button type={type} onClick={onClick} disabled={disabled} style={blueStyle} className={`${c} ${s} rounded-xl font-medium transition disabled:opacity-50 ${className}`}>{children}</button>;
 };
 const Badge=({text,color='gray'})=>{
   const c=color==='green'?'bg-green-100 text-green-700':color==='red'?'bg-red-100 text-red-700':color==='blue'?'bg-blue-100 text-blue-700':color==='yellow'?'bg-yellow-100 text-yellow-700':color==='purple'?'bg-purple-100 text-purple-700':color==='orange'?'bg-orange-100 text-orange-700':'bg-gray-100 text-gray-600';
   return <span className={`${c} px-2 py-0.5 rounded-full text-xs font-medium`}>{text}</span>;
 };
+const inputCls="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:border-transparent bg-white transition disabled:bg-gray-50 disabled:text-gray-400 placeholder-gray-300";
+const inputStyle={};
+const inputFocus={'--tw-ring-color':'rgba(0,181,181,0.25)'};
 const Input=({label,value,onChange,type='text',required,placeholder,disabled,className=''})=>(
   <div className={`flex flex-col gap-1 ${className}`}>
-    {label&&<label className="text-xs font-medium text-gray-600">{label}{required&&<span className="text-red-500 ml-0.5">*</span>}</label>}
+    {label&&<label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}{required&&<span className="text-red-400 ml-0.5">*</span>}</label>}
     <input type={type} value={value||''} onChange={e=>onChange(e.target.value)} required={required} placeholder={placeholder} disabled={disabled}
-      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 disabled:bg-gray-50"/>
+      className={inputCls} style={{'--tw-ring-color':'rgba(0,181,181,0.25)'}}
+      onFocus={e=>{e.target.style.borderColor='#00b5b5';e.target.style.boxShadow='0 0 0 3px rgba(0,181,181,0.15)';}}
+      onBlur={e=>{e.target.style.borderColor='';e.target.style.boxShadow='';}}/>
   </div>
 );
 const Sel=({label,value,onChange,options,required,className=''})=>(
   <div className={`flex flex-col gap-1 ${className}`}>
-    {label&&<label className="text-xs font-medium text-gray-600">{label}{required&&<span className="text-red-500 ml-0.5">*</span>}</label>}
-    <select value={value||''} onChange={e=>onChange(e.target.value)} required={required} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white">
+    {label&&<label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}{required&&<span className="text-red-400 ml-0.5">*</span>}</label>}
+    <select value={value||''} onChange={e=>onChange(e.target.value)} required={required}
+      className={inputCls}
+      onFocus={e=>{e.target.style.borderColor='#00b5b5';e.target.style.boxShadow='0 0 0 3px rgba(0,181,181,0.15)';}}
+      onBlur={e=>{e.target.style.borderColor='';e.target.style.boxShadow='';}}>
       {options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   </div>
 );
 const Textarea=({label,value,onChange,rows=3,placeholder=''})=>(
   <div className="flex flex-col gap-1">
-    {label&&<label className="text-xs font-medium text-gray-600">{label}</label>}
+    {label&&<label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</label>}
     <textarea value={value||''} onChange={e=>onChange(e.target.value)} rows={rows} placeholder={placeholder}
-      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 resize-none"/>
+      className={`${inputCls} resize-none`}
+      onFocus={e=>{e.target.style.borderColor='#00b5b5';e.target.style.boxShadow='0 0 0 3px rgba(0,181,181,0.15)';}}
+      onBlur={e=>{e.target.style.borderColor='';e.target.style.boxShadow='';}}/>
   </div>
 );
 const Modal=({title,onClose,children,size='md'})=>{
@@ -74,27 +108,70 @@ const Modal=({title,onClose,children,size='md'})=>{
   return(
     <div className="modal-bg fixed inset-0 z-50 flex items-center justify-center p-4" onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
       <div className={`bg-white rounded-2xl shadow-2xl w-full ${w} max-h-[92vh] flex flex-col fade`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
-          <h2 className="font-semibold text-gray-800 text-lg">{title}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 flex-shrink-0">
+          <h2 className="font-bold text-gray-800 text-base">{title}</h2>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-400 hover:text-gray-600 text-lg transition leading-none">&times;</button>
         </div>
-        <div className="overflow-y-auto flex-1 px-6 py-4">{children}</div>
+        <div className="overflow-y-auto flex-1 px-6 py-5">{children}</div>
       </div>
     </div>
   );
 };
 const StatCard=({title,value,sub,color,icon})=>{
-  const g=color==='blue'?'from-blue-500 to-blue-600':color==='green'?'from-green-500 to-green-600':color==='purple'?'from-purple-500 to-purple-600':color==='orange'?'from-orange-500 to-orange-600':'from-gray-500 to-gray-600';
-  return(<div className={`bg-gradient-to-br ${g} text-white rounded-2xl p-5 shadow`}><div className="flex items-start justify-between"><div><p className="text-sm opacity-80">{title}</p><p className="text-3xl font-bold mt-1">{value}</p>{sub&&<p className="text-xs opacity-70 mt-1">{sub}</p>}</div><span className="text-3xl opacity-60">{icon}</span></div></div>);
+  const accent=color==='blue'?'#00b5b5':color==='green'?'#10b981':color==='purple'?'#8b5cf6':color==='orange'?'#f59e0b':'#64748b';
+  return(
+    <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 card-hover relative overflow-hidden">
+      <div className="absolute top-0 left-0 w-full h-1 rounded-t-2xl" style={{background:accent}}/>
+      <div className="flex items-start justify-between mt-1">
+        <div className="flex-1">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{title}</p>
+          <p className="text-3xl font-bold text-gray-800 mt-2 leading-none">{value}</p>
+          {sub&&<p className="text-xs text-gray-400 mt-1.5">{sub}</p>}
+        </div>
+        <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ml-3" style={{background:`${accent}18`}}>
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
 };
-const Empty=({msg='Sin registros'})=>(<div className="text-center py-16 text-gray-400"><div className="text-5xl mb-3">📋</div><p className="text-sm">{msg}</p></div>);
-const Spin=()=>(<div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-blue-200 border-t-blue-500 rounded-full animate-spin"/></div>);
+const Empty=({msg='Sin registros'})=>(<div className="text-center py-16 text-gray-300"><div className="text-5xl mb-3 opacity-50">📋</div><p className="text-sm text-gray-400">{msg}</p></div>);
+const Spin=()=>(<div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-4 border-gray-100 rounded-full animate-spin" style={{borderTopColor:'#00b5b5'}}/></div>);
 
 // Avatar con foto o inicial
 const Avatar=({nombre,foto_url,size='md'})=>{
   const s=size==='lg'?'w-20 h-20 text-2xl':size==='xl'?'w-28 h-28 text-4xl':'w-8 h-8 text-xs';
   if(foto_url) return <img src={foto_url} alt={nombre} className={`${s} rounded-full object-cover border-2 border-white shadow`}/>;
-  return(<div className={`${s} bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0`}><span className="text-blue-600 font-bold">{(nombre||'?').charAt(0).toUpperCase()}</span></div>);
+  return(<div className={`${s} rounded-full flex items-center justify-center flex-shrink-0`} style={{background:'rgba(0,181,181,0.12)'}}><span className="font-bold" style={{color:'#00b5b5'}}>{(nombre||'?').charAt(0).toUpperCase()}</span></div>);
+};
+
+// SERTA LOGO SVG ─────────────────────────────────────────────────
+const SertaLogo=({size='md',white=false})=>{
+  const h=size==='sm'?28:size==='lg'?56:40;
+  const textColor=white?'#ffffff':'#3d5166';
+  const tealColor=white?'rgba(255,255,255,0.85)':'#00b5b5';
+  return(
+    <svg height={h} viewBox="0 0 260 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* "serta" wordmark */}
+      <text x="0" y="46" fontFamily="Inter,sans-serif" fontSize="52" fontWeight="700" fill={textColor} letterSpacing="-1">serta</text>
+      {/* "INTELLIGENCE PARTNER" */}
+      <text x="2" y="64" fontFamily="Inter,sans-serif" fontSize="11" fontWeight="500" fill={tealColor} letterSpacing="2.5">INTELLIGENCE PARTNER</text>
+      {/* Crosshair / target icon */}
+      <g transform="translate(200,4)">
+        {/* Outer ring */}
+        <circle cx="30" cy="30" r="27" stroke={tealColor} strokeWidth="4.5" fill="none" opacity="0.9"/>
+        {/* Middle ring */}
+        <circle cx="30" cy="30" r="17" stroke={tealColor} strokeWidth="4.5" fill="none" opacity="0.7"/>
+        {/* Inner dot */}
+        <circle cx="30" cy="30" r="6" fill={tealColor} opacity="0.85"/>
+        {/* Cross lines — only top-right quadrant gaps (like the logo) */}
+        <line x1="30" y1="0" x2="30" y2="10" stroke={tealColor} strokeWidth="4.5" strokeLinecap="round" opacity="0.5"/>
+        <line x1="30" y1="50" x2="30" y2="60" stroke={tealColor} strokeWidth="4.5" strokeLinecap="round" opacity="0.5"/>
+        <line x1="0" y1="30" x2="10" y2="30" stroke={tealColor} strokeWidth="4.5" strokeLinecap="round" opacity="0.5"/>
+        <line x1="50" y1="30" x2="60" y2="30" stroke={tealColor} strokeWidth="4.5" strokeLinecap="round" opacity="0.5"/>
+      </g>
+    </svg>
+  );
 };
 
 // LOGIN ─────────────────────────────────────────────────────────
@@ -114,20 +191,47 @@ function LoginPage({onLogin}){
     }catch(e){setErr('Error de conexión. Intenta de nuevo.');setLoading(false);}
   };
   return(
-    <div className="min-h-screen bg-gradient-to-br from-navy to-navy-light flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 fade">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-brand rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg"><span className="text-white font-bold text-2xl">S</span></div>
-          <h1 className="text-xl font-bold text-gray-800">SERTA</h1>
-          <p className="text-xs text-gray-500 mt-1">Sistema de Gestión Interna</p>
+    <div className="min-h-screen flex">
+      {/* Left panel — branding */}
+      <div className="hidden lg:flex flex-col justify-between w-1/2 bg-navy-dark p-12" style={{background:'linear-gradient(145deg,#1a252f 0%,#2c3e50 60%,#3d5166 100%)'}}>
+        <SertaLogo size="lg" white/>
+        <div>
+          <h2 className="text-white text-3xl font-bold leading-tight mb-4">Plataforma de<br/>Gestión Interna</h2>
+          <p className="text-white/50 text-sm leading-relaxed">Centraliza proyectos, proveedores, requisiciones y comisiones en un solo lugar.</p>
         </div>
-        <form onSubmit={submit} className="space-y-4">
-          <Input label="Correo electrónico" type="email" value={email} onChange={setEmail} required placeholder="usuario@serta.com.mx"/>
-          <Input label="Contraseña" type="password" value={pass} onChange={setPass} required placeholder="••••••••"/>
-          {err&&<p className="text-red-600 text-xs bg-red-50 px-3 py-2 rounded-lg">{err}</p>}
-          <Btn type="submit" disabled={loading} className="w-full justify-center">{loading?'Iniciando sesión...':'Iniciar Sesión'}</Btn>
-        </form>
-        <p className="text-center text-xs text-gray-400 mt-6">© {new Date().getFullYear()} SERTA de México</p>
+        <p className="text-white/25 text-xs">© {new Date().getFullYear()} SERTA de México · Confidencial</p>
+      </div>
+      {/* Right panel — login form */}
+      <div className="flex-1 flex items-center justify-center p-8 bg-gray-50">
+        <div className="w-full max-w-sm fade">
+          {/* Mobile logo */}
+          <div className="lg:hidden mb-10 flex justify-center">
+            <SertaLogo size="lg"/>
+          </div>
+          <div className="mb-8">
+            <h1 className="text-2xl font-bold text-gray-800">Bienvenido</h1>
+            <p className="text-gray-500 text-sm mt-1">Ingresa tus credenciales para continuar</p>
+          </div>
+          <form onSubmit={submit} className="space-y-5">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Correo electrónico</label>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} required placeholder="usuario@serta.com.mx"
+                className="border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand bg-white shadow-sm transition"/>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Contraseña</label>
+              <input type="password" value={pass} onChange={e=>setPass(e.target.value)} required placeholder="••••••••"
+                className="border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand bg-white shadow-sm transition"/>
+            </div>
+            {err&&<p className="text-red-600 text-xs bg-red-50 border border-red-100 px-3 py-2 rounded-xl">{err}</p>}
+            <button type="submit" disabled={loading}
+              className="w-full py-3 rounded-xl text-sm font-semibold text-white transition disabled:opacity-60"
+              style={{background:'linear-gradient(90deg,#00b5b5,#00d0d0)',boxShadow:'0 4px 14px rgba(0,181,181,.4)'}}>
+              {loading?'Iniciando sesión...':'Iniciar Sesión →'}
+            </button>
+          </form>
+          <p className="text-center text-xs text-gray-400 mt-8">© {new Date().getFullYear()} SERTA de México</p>
+        </div>
       </div>
     </div>
   );
@@ -148,27 +252,41 @@ const MODS=[
 ];
 function Sidebar({user,active,setActive,onLogout}){
   return(
-    <aside className="w-60 bg-navy min-h-screen flex flex-col flex-shrink-0">
-      <div className="px-5 py-5 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-brand rounded-xl flex items-center justify-center shadow"><span className="text-white font-bold text-base">S</span></div>
-          <div><p className="text-white font-semibold text-sm">SERTA</p><p className="text-white/40 text-xs">Gestión Interna</p></div>
+    <aside className="w-64 min-h-screen flex flex-col flex-shrink-0" style={{background:'linear-gradient(180deg,#1a252f 0%,#2c3e50 100%)'}}>
+      {/* Logo */}
+      <div className="px-5 py-6 border-b border-white/10">
+        <SertaLogo size="sm" white/>
+      </div>
+      {/* User pill */}
+      <div className="mx-3 mt-4 mb-2 bg-white/8 rounded-2xl px-3 py-3 flex items-center gap-3" style={{background:'rgba(255,255,255,0.07)'}}>
+        <Avatar nombre={user.nombre} foto_url={user.foto_url} size="sm"/>
+        <div className="overflow-hidden flex-1">
+          <p className="text-white text-xs font-semibold truncate">{user.nombre}</p>
+          <p className="text-white/40 text-xs">{user.rol}</p>
         </div>
       </div>
-      <nav className="flex-1 px-3 py-4 space-y-1">
+      {/* Nav */}
+      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
         {MODS.map(m=>{
           const ok=!m.perm||user.rol==='Administrador'||user[m.perm];
           if(!ok)return null;
           const on=active===m.id;
-          return(<button key={m.id} onClick={()=>setActive(m.id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition ${on?'bg-brand text-white font-medium':'text-white/60 hover:bg-white/10 hover:text-white'}`}><span className="text-base">{m.icon}</span><span>{m.label}</span></button>);
+          return(
+            <button key={m.id} onClick={()=>setActive(m.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${on?'sidebar-item-active text-white font-semibold':'text-white/55 hover:bg-white/8 hover:text-white'}`}
+              style={on?{}:{}}>
+              <span className={`text-base ${on?'':'opacity-70'}`}>{m.icon}</span>
+              <span>{m.label}</span>
+              {on&&<span className="ml-auto w-1.5 h-1.5 rounded-full bg-white/70"/>}
+            </button>
+          );
         })}
       </nav>
+      {/* Footer */}
       <div className="px-4 py-4 border-t border-white/10">
-        <div className="flex items-center gap-2 mb-3">
-          <Avatar nombre={user.nombre} foto_url={user.foto_url} size="sm"/>
-          <div className="overflow-hidden"><p className="text-white text-xs font-medium truncate">{user.nombre}</p><p className="text-white/40 text-xs">{user.rol}</p></div>
-        </div>
-        <button onClick={onLogout} className="text-white/50 hover:text-white text-xs transition">← Cerrar sesión</button>
+        <button onClick={onLogout} className="flex items-center gap-2 text-white/40 hover:text-white/80 text-xs transition w-full">
+          <span>←</span><span>Cerrar sesión</span>
+        </button>
       </div>
     </aside>
   );
@@ -255,13 +373,19 @@ function Dashboard({user}){
               </div>
             ))}
           </div>
-          <p className="text-xs text-gray-400 mt-3">Ve a <span className="font-medium text-blue-600">Requisiciones</span> para autorizar o ver el detalle.</p>
+          <p className="text-xs text-gray-400 mt-3">Ve a <span className="font-medium" style={{color:'#008a8a'}}>Requisiciones</span> para autorizar o ver el detalle.</p>
         </div>
       )}
       <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-        <h2 className="font-semibold text-gray-700 mb-4">Módulos disponibles</h2>
+        <h2 className="font-bold text-gray-700 mb-4 text-sm uppercase tracking-wider">Módulos disponibles</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {MODS.filter(m=>m.id!=='dashboard').map(m=>{const ok=!m.perm||user.rol==='Administrador'||user[m.perm];return ok?<div key={m.id} className="bg-gray-50 rounded-xl p-4 border border-gray-100"><div className="text-2xl mb-1">{m.icon}</div><p className="font-medium text-sm text-gray-700">{m.label}</p></div>:null;})}
+          {MODS.filter(m=>m.id!=='dashboard').map(m=>{
+            const ok=!m.perm||user.rol==='Administrador'||user[m.perm];
+            return ok?<div key={m.id} className="bg-gray-50 hover:bg-teal-50 rounded-xl p-4 border border-gray-100 hover:border-teal-200 transition cursor-default">
+              <div className="text-2xl mb-2">{m.icon}</div>
+              <p className="font-semibold text-sm text-gray-700">{m.label}</p>
+            </div>:null;
+          })}
         </div>
       </div>
     </div>
@@ -473,7 +597,7 @@ function EmpleadosTab({user}){
             {/* Permisos de módulos */}
             {isAdmin&&(<>
               <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 mt-2">Acceso a módulos</p>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-4 bg-blue-50 rounded-xl mb-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-4 rounded-xl mb-4" style={{background:'rgba(0,181,181,0.06)'}}>
                 <PC k="perm_empleados" lbl="👥 RR.HH."/>
                 <PC k="perm_clientes" lbl="💼 Ventas/CRM"/>
                 <PC k="perm_proveedores" lbl="🏭 Proveedores"/>
@@ -617,7 +741,7 @@ function VacacionesTab({user}){
                     <div>
                       <p className="font-semibold text-gray-800">{v.emp?.nombre||'—'}</p>
                       <p className="text-xs text-gray-500">{v.emp?.departamento||''} · {v.tipo}</p>
-                      <p className="text-xs text-blue-600 mt-0.5">Días disponibles: <strong>{disp}</strong> de {v.emp?.dias_vacaciones||0}</p>
+                      <p className="text-xs mt-0.5" style={{color:"#008a8a"}}>Días disponibles: <strong>{disp}</strong> de {v.emp?.dias_vacaciones||0}</p>
                     </div>
                   </div>
                   <Badge text={v.estatus} color={ec(v.estatus)}/>
@@ -625,7 +749,7 @@ function VacacionesTab({user}){
                 <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
                   <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-400">Inicio</p><p className="font-medium">{fmtD(v.fecha_inicio)}</p></div>
                   <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-400">Fin</p><p className="font-medium">{fmtD(v.fecha_fin)}</p></div>
-                  <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-400">Días solicitados</p><p className="font-bold text-blue-600">{v.dias_solicitados}</p></div>
+                  <div className="bg-gray-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-400">Días solicitados</p><p className="font-bold" style={{color:'#00b5b5'}}>{v.dias_solicitados}</p></div>
                 </div>
                 {v.motivo&&<p className="text-xs text-gray-500 mt-2">📝 {v.motivo}</p>}
                 {puedeAprobar&&v.estatus==='Pendiente'&&(
@@ -997,7 +1121,7 @@ function RRHHModule({user}){
     <div className="p-6 fade">
       <h1 className="text-2xl font-bold text-gray-800 mb-5">Recursos Humanos</h1>
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 mb-6 overflow-x-auto">
-        {tabs.map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${tab===t.id?'bg-white text-blue-600 shadow-sm':'text-gray-500 hover:text-gray-700'}`}>{t.label}</button>))}
+        {tabs.map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap ${tab===t.id?'bg-white shadow-sm':'text-gray-500 hover:text-gray-700'}`} style={tab===t.id?{color:'#008a8a'}:{}}>{t.label}</button>))}
       </div>
       {tab==='empleados'    &&<EmpleadosTab user={user}/>}
       {tab==='vacaciones'   &&<VacacionesTab user={user}/>}
@@ -1501,7 +1625,16 @@ function ClientesModule({user}){
 }
 
 function Pronto({titulo,icon,semana}){
-  return(<div className="p-6 flex items-center justify-center min-h-96 fade"><div className="text-center"><div className="text-6xl mb-4">{icon}</div><h2 className="text-xl font-bold text-gray-700">{titulo}</h2><p className="text-gray-400 text-sm mt-2">Módulo en construcción</p><div className="mt-4 bg-blue-50 text-blue-600 text-sm px-4 py-2 rounded-xl inline-block">Próximamente — Semana {semana}</div></div></div>);
+  return(
+    <div className="p-6 flex items-center justify-center min-h-96 fade">
+      <div className="text-center bg-white rounded-2xl border border-gray-100 shadow-sm px-12 py-12">
+        <div className="text-6xl mb-4 opacity-70">{icon}</div>
+        <h2 className="text-xl font-bold text-gray-700">{titulo}</h2>
+        <p className="text-gray-400 text-sm mt-2">Módulo en construcción</p>
+        <div className="mt-5 inline-block text-xs font-semibold px-4 py-2 rounded-full" style={{background:'rgba(0,181,181,0.10)',color:'#008a8a'}}>Próximamente · Semana {semana}</div>
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1637,7 +1770,7 @@ function VentasModule({user}){
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <div onClick={()=>setFStatus(fStatus==='En venta'?'':'En venta')} className={`rounded-2xl p-4 border-2 cursor-pointer transition ${fStatus==='En venta'?'border-purple-400 bg-purple-50':'border-gray-100 bg-white hover:border-gray-200'}`}>
+        <div onClick={()=>setFStatus(fStatus==='En venta'?'':'En venta')} className={`rounded-2xl p-4 border-2 cursor-pointer transition border-gray-100 bg-white hover:border-gray-200`} style={fStatus==='En venta'?{borderColor:'#00b5b5',background:'rgba(0,181,181,0.07)'}:{}}>
           <div className="flex items-center justify-between"><span className="text-sm text-gray-500">En venta</span><span>💼</span></div>
           <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('En venta')}</p>
         </div>
@@ -1947,7 +2080,7 @@ function ProyectosModule({user}){
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         {[['Prospectos','Prospecto','yellow','🔍'],['Activos','Activo','green','▶️'],['Cerrados','Cerrado','blue','✅'],['Cancelados','Cancelado','red','❌']].map(([lbl,st,col,ic])=>(
-          <div key={st} onClick={()=>setFStatus(fStatus===st?'':st)} className={`rounded-2xl p-4 border-2 cursor-pointer transition ${fStatus===st?'border-blue-400 bg-blue-50':'border-gray-100 bg-white hover:border-gray-200'}`}>
+          <div key={st} onClick={()=>setFStatus(fStatus===st?'':st)} className={`rounded-2xl p-4 border-2 cursor-pointer transition ${fStatus===st?'border-gray-100 bg-white':'border-gray-100 bg-white hover:border-gray-200'}`} style={fStatus===st?{borderColor:'#00b5b5',background:'rgba(0,181,181,0.07)'}:{}}>
             <div className="flex items-center justify-between"><span className="text-sm text-gray-500">{lbl}</span><span>{ic}</span></div>
             <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor(st)}</p>
           </div>
@@ -1981,7 +2114,7 @@ function ProyectosModule({user}){
                     </td>
                     <td className="px-4 py-3 text-gray-600 hidden md:table-cell">{p.cliente?.nombre||'—'}</td>
                     <td className="px-4 py-3 hidden lg:table-cell">
-                      {p.numero_estudio?<span className="font-mono text-blue-600 font-medium">{p.numero_estudio}</span>:<span className="text-gray-300 text-xs">Sin asignar</span>}
+                      {p.numero_estudio?<span className="font-mono font-medium" style={{color:'#00b5b5'}}>{p.numero_estudio}</span>:<span className="text-gray-300 text-xs">Sin asignar</span>}
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell">
                       {p.pm?<div className="flex items-center gap-2"><Avatar nombre={p.pm.nombre} foto_url={p.pm.foto_url} size="sm"/><span className="text-gray-700 text-xs">{p.pm.nombre}</span></div>:<span className="text-gray-300 text-xs">Sin asignar</span>}
@@ -2010,7 +2143,7 @@ function ProyectosModule({user}){
           <div className="space-y-4">
             <div className="flex items-center gap-3 mb-1">
               <Badge text={sel.status} color={STATUS_COLOR[sel.status]||'gray'}/>
-              {sel.numero_estudio&&<span className="font-mono text-blue-600 font-semibold text-sm bg-blue-50 px-3 py-1 rounded-full">{sel.numero_estudio}</span>}
+              {sel.numero_estudio&&<span className="font-mono font-semibold text-sm px-3 py-1 rounded-full" style={{color:'#008a8a',background:'rgba(0,181,181,0.1)'}}>{sel.numero_estudio}</span>}
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {[
@@ -2224,7 +2357,7 @@ function calcComision(inp, cfg){
 }
 
 // Mini gráfica de barras SVG
-function BarChart({data,labelKey,valueKey,color='#1a56db',height=180}){
+function BarChart({data,labelKey,valueKey,color='#00b5b5',height=180}){
   if(!data||!data.length)return<div className="text-center text-xs text-gray-400 py-8">Sin datos para graficar</div>;
   const max=Math.max(...data.map(d=>d[valueKey]||0))||1;
   const w=56;const gap=8;const total=data.length*(w+gap);
@@ -2469,7 +2602,7 @@ function ComisionesModule({user}){
       {filtered.length>0&&(
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5">
           <h3 className="font-semibold text-gray-700 text-sm mb-4">MSD por mes (año {fAnio||'todos'})</h3>
-          <BarChart data={chartData} labelKey="label" valueKey="msd_final" color="#1a56db"/>
+          <BarChart data={chartData} labelKey="label" valueKey="msd_final"/>
         </div>
       )}
 
@@ -2511,7 +2644,7 @@ function ComisionesModule({user}){
                   <td className="px-3 py-3 text-center"><Badge text={r.status} color={r.status==='Registrado'?'green':'gray'}/></td>
                   <td className="px-3 py-3">
                     <div className="flex gap-1">
-                      <button onClick={()=>openView(r)} className="text-gray-400 hover:text-blue-600 text-xs px-2 py-1 rounded hover:bg-blue-50 transition">Ver</button>
+                      <button onClick={()=>openView(r)} className="text-gray-400 hover:text-teal-600 text-xs px-2 py-1 rounded hover:bg-teal-50 transition">Ver</button>
                       {(canSeeAll||r.vendedor_id===user.id)&&r.status==='Borrador'&&
                         <button onClick={()=>openEdit(r)} className="text-gray-400 hover:text-gray-700 text-xs px-2 py-1 rounded hover:bg-gray-100 transition">Editar</button>
                       }
@@ -2586,21 +2719,21 @@ function ComisionesModule({user}){
                   </label>
                 ))}
               </div>
-              {form.empresa==='SERTA'&&<p className="text-xs text-blue-600 mt-2">+1.5% adicional por ser proyecto SERTA</p>}
+              {form.empresa==='SERTA'&&<p className="text-xs mt-2" style={{color:"#008a8a"}}>+1.5% adicional por ser proyecto SERTA</p>}
             </div>
 
             {/* Preview de cálculo */}
             {parseFloat(form.monto_cerrado)>0&&(
-              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                <p className="text-xs font-semibold text-blue-700 mb-3 uppercase">Vista previa del cálculo</p>
+              <div className="rounded-xl p-4 border" style={{background:'rgba(0,181,181,0.06)',borderColor:'rgba(0,181,181,0.2)'}}>
+                <p className="text-xs font-semibold mb-3 uppercase" style={{color:'#008a8a'}}>Vista previa del cálculo</p>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div><p className="text-gray-500">Monto SERTA</p><p className="font-bold text-gray-800">{fmt(calc.monto_serta)}</p></div>
                   <div><p className="text-gray-500">% Com. Ventas</p><p className="font-bold text-gray-800">{(calc.pct_com_ventas*100).toFixed(2)}%</p></div>
                   <div><p className="text-gray-500">Excedente</p><p className={`font-bold ${calc.excedente<0?'text-red-600':'text-green-700'}`}>{fmt(calc.excedente)}</p></div>
-                  <div className="bg-white rounded-lg p-2 border border-blue-200">
+                  <div className="bg-white rounded-lg p-2 border border-gray-100">
                     <p className="text-gray-500">Com. PM Final</p><p className="font-bold text-purple-700">{fmt(calc.com_final_pm)}</p>
                   </div>
-                  <div className="bg-white rounded-lg p-2 border border-blue-200">
+                  <div className="bg-white rounded-lg p-2 border border-gray-100">
                     <p className="text-gray-500">Com. Ventas Final</p><p className="font-bold text-orange-700">{fmt(calc.com_final_ventas)}</p>
                   </div>
                   <div className="bg-green-50 rounded-lg p-2 border border-green-200 col-span-2">
@@ -2640,7 +2773,7 @@ function ComisionesModule({user}){
               <div><p className="text-xs text-gray-500">Monto Cerrado</p><p className="font-mono font-bold">{fmt(selRow.monto_cerrado)}</p></div>
               {selRow.empresa==='SERTA'&&<div><p className="text-xs text-gray-500">Com. Conecta</p><p className="font-mono">{fmt(selRow.comision_conecta)}</p></div>}
               <div><p className="text-xs text-gray-500">Costos Directos</p><p className="font-mono">{fmt(selRow.costos_directos)}</p></div>
-              <div><p className="text-xs text-gray-500">Monto SERTA</p><p className="font-mono font-bold text-blue-700">{fmt(selRow.monto_serta)}</p></div>
+              <div><p className="text-xs text-gray-500">Monto SERTA</p><p className="font-mono font-bold" style={{color:'#008a8a'}}>{fmt(selRow.monto_serta)}</p></div>
               <div><p className="text-xs text-gray-500">% Com. Ventas</p><p className="font-mono">{((selRow.pct_com_ventas||0)*100).toFixed(2)}%</p></div>
               <div><p className="text-xs text-gray-500">Excedente</p><p className={`font-mono font-bold ${(selRow.excedente||0)<0?'text-red-600':'text-green-700'}`}>{fmt(selRow.excedente)}</p></div>
             </div>
@@ -2950,7 +3083,7 @@ SERTA de México`
       {/* Tabs */}
       <div className="flex gap-2 mb-4 border-b border-gray-200">
         {[['mis','Mis requisiciones'],canAprobar&&['autorizar',`Por autorizar${porAutorizar.length?` (${porAutorizar.length})`:''}` ],canAll&&['todas','Todas']].filter(Boolean).map(([id,label])=>(
-          <button key={id} onClick={()=>setTab(id)} className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${tab===id?'border-blue-500 text-blue-600':'border-transparent text-gray-500 hover:text-gray-700'}`}>{label}</button>
+          <button key={id} onClick={()=>setTab(id)} className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${tab===id?'border-brand text-brand-dark':'border-transparent text-gray-500 hover:text-gray-700'}`} style={tab===id?{borderBottomColor:'#00b5b5',color:'#008a8a'}:{}}>{label}</button>
         ))}
       </div>
 
@@ -2989,7 +3122,7 @@ SERTA de México`
                   <td className="px-3 py-3 text-center"><Badge text={r.status} color={REQ_STATUS_COLOR[r.status]||'gray'}/></td>
                   <td className="px-3 py-3">
                     <div className="flex gap-1">
-                      <button onClick={()=>openView(r)} className="text-xs text-gray-400 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50 transition">Ver</button>
+                      <button onClick={()=>openView(r)} className="text-xs text-gray-400 hover:text-teal-600 px-2 py-1 rounded hover:bg-teal-50 transition">Ver</button>
                       {canAprobar&&r.status==='Pendiente'&&r.director_id===user.id&&(
                         <button onClick={()=>{setSel(r);setModal('autorizar');}} className="text-xs text-green-600 hover:text-green-700 px-2 py-1 rounded hover:bg-green-50 transition font-medium">Autorizar</button>
                       )}
@@ -3024,7 +3157,7 @@ SERTA de México`
                   <option value="">— Seleccionar proveedor —</option>
                   {proveedores.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
                 </select>
-                {form.proveedor_id&&<p className="text-xs text-blue-600 mt-0.5">Régimen: {REGIMENES[form.regimen]?.label||form.regimen}</p>}
+                {form.proveedor_id&&<p className="text-xs mt-0.5" style={{color:"#008a8a"}}>Régimen: {REGIMENES[form.regimen]?.label||form.regimen}</p>}
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-gray-600">Director que autoriza <span className="text-red-500">*</span></label>
@@ -3159,12 +3292,12 @@ SERTA de México`
 
             {/* Evaluación */}
             {sel.tipo==='Normal'&&(
-              <div className="bg-blue-50 rounded-xl p-4">
-                <p className="text-xs font-semibold text-blue-700 uppercase mb-3">Evaluación del proveedor</p>
+              <div className="rounded-xl p-4" style={{background:'rgba(0,181,181,0.07)'}}>
+                <p className="text-xs font-semibold uppercase mb-3" style={{color:'#008a8a'}}>Evaluación del proveedor</p>
                 {sel.eval_score!=null?(
                   <div>
-                    <p className="text-sm mb-2">Probabilidad de volver a usar: <span className="font-bold text-blue-700 text-lg">{sel.eval_score}/10</span></p>
-                    {sel.eval_areas?.length>0&&<div className="flex flex-wrap gap-2 mt-1">{sel.eval_areas.map(a=><Badge key={a} text={a} color="blue"/>)}</div>}
+                    <p className="text-sm mb-2">Probabilidad de volver a usar: <span className="font-bold text-lg" style={{color:'#008a8a'}}>{sel.eval_score}/10</span></p>
+                    {sel.eval_areas?.length>0&&<div className="flex flex-wrap gap-2 mt-1">{sel.eval_areas.map(a=><Badge key={a} text={a} color="green"/>)}</div>}
                     {sel.eval_otro&&<p className="text-xs text-gray-500 mt-2">Otro: {sel.eval_otro}</p>}
                   </div>
                 ):(sel.status==='Pagada'&&(sel.creado_por===user.id||canAll))?(
@@ -3172,15 +3305,15 @@ SERTA de México`
                     <p className="text-xs text-gray-600">¿Qué tan probable es que considere utilizar los servicios de este proveedor en el futuro por su desempeño en este proyecto?</p>
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-gray-500">0</span>
-                      <input type="range" min="0" max="10" value={evalForm.score} onChange={e=>setEvalForm(f=>({...f,score:parseInt(e.target.value)}))} className="flex-1 accent-blue-600"/>
+                      <input type="range" min="0" max="10" value={evalForm.score} onChange={e=>setEvalForm(f=>({...f,score:parseInt(e.target.value)}))} className="flex-1" style={{accentColor:'#00b5b5'}}/>
                       <span className="text-xs text-gray-500">10</span>
-                      <span className="font-bold text-blue-700 text-lg w-6">{evalForm.score}</span>
+                      <span className="font-bold text-lg w-6" style={{color:'#008a8a'}}>{evalForm.score}</span>
                     </div>
                     <p className="text-xs font-medium text-gray-600">Áreas de oportunidad:</p>
                     <div className="grid grid-cols-1 gap-2">
                       {AREAS_OPT.map(a=>(
                         <label key={a} className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input type="checkbox" checked={evalForm.areas.includes(a)} onChange={e=>setEvalForm(f=>({...f,areas:e.target.checked?[...f.areas,a]:f.areas.filter(x=>x!==a)}))} className="accent-blue-600"/>
+                          <input type="checkbox" checked={evalForm.areas.includes(a)} onChange={e=>setEvalForm(f=>({...f,areas:e.target.checked?[...f.areas,a]:f.areas.filter(x=>x!==a)}))} style={{accentColor:'#00b5b5'}}/>
                           {a}
                         </label>
                       ))}
