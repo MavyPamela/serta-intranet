@@ -1307,6 +1307,7 @@ function ProveedoresModule({user}){
   const[contactos,setContactos]=useState([]);
   const[formCont,setFormCont]=useState({});
   const[modalCont,setModalCont]=useState(false);
+  const[contForm,setContForm]=useState([{nombre:'',telefono:'',email:''},{nombre:'',telefono:'',email:''}]);
   const[saving,setSaving]=useState(false);
   const[msg,setMsg]=useState('');
   const[rfcWarn,setRfcWarn]=useState('');
@@ -1353,8 +1354,23 @@ function ProveedoresModule({user}){
     e.preventDefault();setSaving(true);setMsg('');
     try{
       const obj={nombre:form.nombre,razon_social:form.razon_social,rfc:(form.rfc||'').toUpperCase().trim(),email:form.email,telefono:form.telefono,direccion:form.direccion,ciudad:form.ciudad,estado:form.estado,cp:form.cp,categoria:(form.categorias||[]).join(','),calificacion:parseInt(form.calificacion)||3,tipo_comprobante:form.tipo_comprobante||'fisica_factura',regimen_fiscal:form.tipo_comprobante||'fisica_factura',banco:form.banco,cuenta_banco:form.cuenta_banco,sucursal_banco:form.sucursal_banco||'',clabe:form.clabe,notas:form.notas,activo:form.activo!==false};
-      if(modal==='nuevo'){const{error}=await sb.from('proveedores').insert(obj);if(error)throw error;}
-      else{const{error}=await sb.from('proveedores').update(obj).eq('id',sel.id);if(error)throw error;}
+      let provId=sel?.id;
+      if(modal==='nuevo'){
+        const{data:ins,error}=await sb.from('proveedores').insert(obj).select('id').single();
+        if(error)throw error;
+        provId=ins.id;
+      } else {
+        const{error}=await sb.from('proveedores').update(obj).eq('id',sel.id);
+        if(error)throw error;
+      }
+      // Guardar contactos inline (hasta 2)
+      for(let i=0;i<contForm.length;i++){
+        const c=contForm[i];
+        if(!c.nombre?.trim())continue;
+        const cObj={proveedor_id:provId,nombre:c.nombre.trim(),telefono:c.telefono||'',email:c.email||'',es_principal:i===0,puesto:'',notas:''};
+        if(c.id){await sb.from('proveedor_contactos').update(cObj).eq('id',c.id);}
+        else{await sb.from('proveedor_contactos').insert(cObj);}
+      }
       setMsg('✅ Guardado correctamente');await load();
       setTimeout(()=>{setModal(null);setMsg('');setRfcWarn('');},1100);
     }catch(er){setMsg('❌ '+(er.message||'Error'));}
@@ -1397,7 +1413,7 @@ function ProveedoresModule({user}){
         <div><h1 className="text-2xl font-bold text-gray-800">Proveedores</h1><p className="text-sm text-gray-500">{filt.length} registros</p></div>
         <div className="flex gap-2 flex-wrap">
           {isSuperAdmin&&<Btn color="outline" onClick={()=>setModalActs(true)}>⚙️ Gestionar actividades</Btn>}
-          {isAdmin&&<Btn onClick={()=>{setForm({...ef,categoria:actividades[0]||'Aforos'});setRfcWarn('');setModal('nuevo');setMsg('');}}>+ Nuevo proveedor</Btn>}
+          {isAdmin&&<Btn onClick={()=>{setForm({...ef,categoria:actividades[0]||'Aforos'});setRfcWarn('');setContForm([{nombre:'',telefono:'',email:''},{nombre:'',telefono:'',email:''}]);setModal('nuevo');setMsg('');}}>+ Nuevo proveedor</Btn>}
         </div>
       </div>
       <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar nombre, RFC, razón social..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 mb-4"/>
@@ -1427,7 +1443,7 @@ function ProveedoresModule({user}){
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadContactos(p.id);setModal('ver');}}>Ver</Btn>
-                        {isAdmin&&<Btn size="sm" color="outline" onClick={()=>{setSel(p);setForm({...p,categorias:p.categoria?(p.categoria.split(',').map(x=>x.trim()).filter(Boolean)):[],tipo_comprobante:p.tipo_comprobante||p.regimen_fiscal||'fisica_factura'});setRfcWarn('');setModal('editar');setMsg('');}}>Editar</Btn>}
+                        {isAdmin&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);setForm({...p,categorias:p.categoria?(p.categoria.split(',').map(x=>x.trim()).filter(Boolean)):[],tipo_comprobante:p.tipo_comprobante||p.regimen_fiscal||'fisica_factura'});setRfcWarn('');setMsg('');const{data:cx}=await sb.from('proveedor_contactos').select('*').eq('proveedor_id',p.id).order('es_principal',{ascending:false});const lc=cx||[];setContForm([lc[0]?{id:lc[0].id,nombre:lc[0].nombre,telefono:lc[0].telefono||'',email:lc[0].email||''}:{nombre:'',telefono:'',email:''},lc[1]?{id:lc[1].id,nombre:lc[1].nombre,telefono:lc[1].telefono||'',email:lc[1].email||''}:{nombre:'',telefono:'',email:''}]);setModal('editar');}}>Editar</Btn>}
                         {isAdmin&&<Btn size="sm" color={p.activo?'red':'green'} onClick={async()=>{await sb.from('proveedores').update({activo:!p.activo}).eq('id',p.id);load();}}>{p.activo?'Baja':'Alta'}</Btn>}
                       </div>
                     </td>
@@ -1570,6 +1586,17 @@ function ProveedoresModule({user}){
               <Input label="No. de cuenta" value={form.cuenta_banco||''} onChange={v=>setForm(f=>({...f,cuenta_banco:v}))}/>
               <Input label="CLABE interbancaria" value={form.clabe||''} onChange={v=>setForm(f=>({...f,clabe:v}))} className="md:col-span-1"/>
             </div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 mt-2">Contactos <span className="font-normal text-gray-400 normal-case">(opcional, hasta 2)</span></p>
+            <div className="space-y-3 mb-4">
+              {[0,1].map(i=>(
+                <div key={i} className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+                  <p className="text-xs font-medium text-gray-500 md:col-span-3">{i===0?'👤 Contacto principal':'👤 Contacto secundario'}</p>
+                  <Input label="Nombre" value={contForm[i]?.nombre||''} onChange={v=>setContForm(f=>{const n=[...f];n[i]={...n[i],nombre:v};return n;})} placeholder="Nombre completo"/>
+                  <Input label="Teléfono" value={contForm[i]?.telefono||''} onChange={v=>setContForm(f=>{const n=[...f];n[i]={...n[i],telefono:v};return n;})} placeholder="Ej. 55 1234 5678"/>
+                  <Input label="Email" type="email" value={contForm[i]?.email||''} onChange={v=>setContForm(f=>{const n=[...f];n[i]={...n[i],email:v};return n;})} placeholder="correo@ejemplo.com"/>
+                </div>
+              ))}
+            </div>
             <Textarea label="Notas" value={form.notas} onChange={v=>setForm(f=>({...f,notas:v}))}/>
             {modal==='editar'&&<label className="flex items-center gap-2 text-sm mt-3 cursor-pointer"><input type="checkbox" checked={!!form.activo} onChange={e=>setForm(f=>({...f,activo:e.target.checked}))} className="accent-blue-600"/>Proveedor activo</label>}
             {msg&&<p className="mt-3 text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
@@ -1617,6 +1644,7 @@ function ClientesModule({user}){
   const[contactos,setContactos]=useState([]);
   const[formCont,setFormCont]=useState({});
   const[modalCont,setModalCont]=useState(false);
+  const[contForm,setContForm]=useState([{nombre:'',telefono:'',email:''},{nombre:'',telefono:'',email:''}]);
   const[saving,setSaving]=useState(false);
   const[msg,setMsg]=useState('');
   const[rfcWarn,setRfcWarn]=useState('');
@@ -1652,8 +1680,23 @@ function ClientesModule({user}){
     e.preventDefault();setSaving(true);setMsg('');
     try{
       const obj={nombre:form.nombre,razon_social:form.razon_social||'',empresa:form.empresa||form.nombre,rfc:(form.rfc||'').toUpperCase().trim(),email:form.email||'',telefono:form.telefono||'',direccion:form.direccion||'',ciudad:form.ciudad||'',estado:form.estado||'',cp:form.cp||'',segmento:form.segmento||'Empresa',estatus:form.estatus||'Activo',notas:form.notas||'',activo:form.activo!==false};
-      if(modal==='nuevo'){const{error}=await sb.from('clientes').insert(obj);if(error)throw error;}
-      else{const{error}=await sb.from('clientes').update(obj).eq('id',sel.id);if(error)throw error;}
+      let cliId=sel?.id;
+      if(modal==='nuevo'){
+        const{data:ins,error}=await sb.from('clientes').insert(obj).select('id').single();
+        if(error)throw error;
+        cliId=ins.id;
+      } else {
+        const{error}=await sb.from('clientes').update(obj).eq('id',sel.id);
+        if(error)throw error;
+      }
+      // Guardar contactos inline (hasta 2)
+      for(let i=0;i<contForm.length;i++){
+        const c=contForm[i];
+        if(!c.nombre?.trim())continue;
+        const cObj={cliente_id:cliId,nombre:c.nombre.trim(),telefono:c.telefono||'',email:c.email||'',es_principal:i===0,puesto:'',notas:''};
+        if(c.id){await sb.from('contactos').update(cObj).eq('id',c.id);}
+        else{await sb.from('contactos').insert(cObj);}
+      }
       setMsg('✅ Guardado correctamente');await load();
       setTimeout(()=>{setModal(null);setMsg('');setRfcWarn('');},1100);
     }catch(er){setMsg('❌ '+(er.message||'Error'));}
@@ -1678,7 +1721,7 @@ function ClientesModule({user}){
     <div className="p-6 fade">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Clientes</h1><p className="text-sm text-gray-500">{filt.length} registros</p></div>
-        {canEdit&&<Btn onClick={()=>{setForm(ef);setRfcWarn('');setModal('nuevo');setMsg('');}}>+ Nuevo cliente</Btn>}
+        {canEdit&&<Btn onClick={()=>{setForm(ef);setRfcWarn('');setContForm([{nombre:'',telefono:'',email:''},{nombre:'',telefono:'',email:''}]);setModal('nuevo');setMsg('');}}>+ Nuevo cliente</Btn>}
       </div>
       <div className="flex flex-wrap gap-2 mb-4">
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar nombre, RFC, razón social..." className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 flex-1 min-w-48"/>
@@ -1713,7 +1756,7 @@ function ClientesModule({user}){
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Btn size="sm" color="outline" onClick={async()=>{setSel(c);await loadContactos(c.id);setModal('ver');}}>Ver</Btn>
-                        {canEdit&&<Btn size="sm" color="outline" onClick={()=>{setSel(c);setForm({...c});setRfcWarn('');setModal('editar');setMsg('');}}>Editar</Btn>}
+                        {canEdit&&<Btn size="sm" color="outline" onClick={async()=>{setSel(c);setForm({...c});setRfcWarn('');setMsg('');const{data:cx}=await sb.from('contactos').select('*').eq('cliente_id',c.id).order('es_principal',{ascending:false});const lc=cx||[];setContForm([lc[0]?{id:lc[0].id,nombre:lc[0].nombre,telefono:lc[0].telefono||'',email:lc[0].email||''}:{nombre:'',telefono:'',email:''},lc[1]?{id:lc[1].id,nombre:lc[1].nombre,telefono:lc[1].telefono||'',email:lc[1].email||''}:{nombre:'',telefono:'',email:''}]);setModal('editar');}}>Editar</Btn>}
                         {canEdit&&<Btn size="sm" color={c.activo?'red':'green'} onClick={async()=>{await sb.from('clientes').update({activo:!c.activo,estatus:c.activo?'Inactivo':'Activo'}).eq('id',c.id);load();}}>{c.activo?'Baja':'Alta'}</Btn>}
                       </div>
                     </td>
@@ -1802,6 +1845,17 @@ function ClientesModule({user}){
               <Input label="C.P." value={form.cp||''} onChange={v=>setForm(f=>({...f,cp:v}))}/>
               <Sel label="Estatus" value={form.estatus||'Activo'} onChange={v=>setForm(f=>({...f,estatus:v}))} options={['Activo','Prospecto','Inactivo'].map(s=>({value:s,label:s}))}/>
             </div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3 mt-2">Contactos <span className="font-normal text-gray-400 normal-case">(opcional, hasta 2)</span></p>
+            <div className="space-y-3 mb-4">
+              {[0,1].map(i=>(
+                <div key={i} className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+                  <p className="text-xs font-medium text-gray-500 md:col-span-3">{i===0?'👤 Contacto principal':'👤 Contacto secundario'}</p>
+                  <Input label="Nombre" value={contForm[i]?.nombre||''} onChange={v=>setContForm(f=>{const n=[...f];n[i]={...n[i],nombre:v};return n;})} placeholder="Nombre completo"/>
+                  <Input label="Teléfono" value={contForm[i]?.telefono||''} onChange={v=>setContForm(f=>{const n=[...f];n[i]={...n[i],telefono:v};return n;})} placeholder="Ej. 55 1234 5678"/>
+                  <Input label="Email" type="email" value={contForm[i]?.email||''} onChange={v=>setContForm(f=>{const n=[...f];n[i]={...n[i],email:v};return n;})} placeholder="correo@ejemplo.com"/>
+                </div>
+              ))}
+            </div>
             <Textarea label="Notas" value={form.notas||''} onChange={v=>setForm(f=>({...f,notas:v}))}/>
             {msg&&<p className="mt-3 text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
             <div className="flex justify-end gap-2 mt-5"><Btn color="gray" onClick={()=>{setModal(null);setRfcWarn('');}}>Cancelar</Btn><Btn type="submit" disabled={saving}>{saving?'Guardando...':'Guardar cliente'}</Btn></div>
@@ -1834,6 +1888,7 @@ const STATUS_COLOR={Venta:'purple','En espera de autorización':'orange',Autoriz
 function VentasModule({user}){
   const[data,setData]=useState([]);
   const[clientes,setClientes]=useState([]);
+  const[contactosCliente,setContactosCliente]=useState([]);
   const[loading,setLoading]=useState(true);
   const[fStatus,setFStatus]=useState('En venta');
   const[search,setSearch]=useState('');
@@ -1869,8 +1924,17 @@ function VentasModule({user}){
     return matchQ&&matchS;
   }),[data,search,fStatus]);
 
-  const efNuevo={nombre:'',cliente_id:'',cliente_nuevo_nombre:'',estado_venta:'Venta',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:'',flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false};
+  const efNuevo={nombre:'',cliente_id:'',cliente_nuevo_nombre:'',contacto_id:'',estado_venta:'Venta',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:'',flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false};
   const ESTADOS_VENTA=['Venta','En espera de autorización','Autorizado','Cancelado'];
+
+  const handleClienteChange=async(clienteId)=>{
+    setForm(f=>({...f,cliente_id:clienteId,cliente_nuevo_nombre:'',contacto_id:''}));
+    setContactosCliente([]);
+    if(clienteId&&clienteId!=='__nuevo__'){
+      const{data:c}=await sb.from('contactos').select('id,nombre,puesto,email,telefono').eq('cliente_id',parseInt(clienteId)).order('es_principal',{ascending:false});
+      setContactosCliente(c||[]);
+    }
+  };
   const ESTADO_COLOR={'Venta':'blue','En espera de autorización':'orange','Autorizado':'green','Cancelado':'red'};
 
   const crearProyecto=async e=>{
@@ -1902,10 +1966,11 @@ function VentasModule({user}){
         p_flag_sindicado:!!form.flag_sindicado,
       });
       if(error)throw error;
-      // Actualizar estado_venta si no es "Venta" (el RPC crea con 'En venta')
-      if(form.estado_venta&&form.estado_venta!=='Venta'){
-        await sb.from('proyectos').update({status:form.estado_venta}).eq('id',r[0].id);
-      }
+      // Actualizar status y/o contacto si aplica
+      const upd={};
+      if(form.estado_venta&&form.estado_venta!=='Venta') upd.status=form.estado_venta;
+      if(form.contacto_id) upd.contacto_cliente_id=parseInt(form.contacto_id);
+      if(Object.keys(upd).length>0) await sb.from('proyectos').update(upd).eq('id',r[0].id);
       setMsg(`✅ Proyecto #${r[0].numero_proyecto} registrado en pipeline`);
       await load();
       setTimeout(()=>{setModal(null);setMsg('');},1300);
@@ -1919,6 +1984,7 @@ function VentasModule({user}){
       const{error}=await sb.from('proyectos').update({
         nombre:form.nombre,
         cliente_id:form.cliente_id?parseInt(form.cliente_id):null,
+        contacto_cliente_id:form.contacto_id?parseInt(form.contacto_id):null,
         empresa:form.empresa,
         tipo_estudio:form.tipo_estudio,
         num_pagos:parseInt(form.num_pagos)||1,
@@ -2024,7 +2090,7 @@ function VentasModule({user}){
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
                         <Btn size="sm" color="outline" onClick={()=>{setSel(p);setModal('ver');}}>Ver</Btn>
-                        {(canCreate||isAdmin)&&p.status==='En venta'&&<Btn size="sm" color="outline" onClick={()=>{setSel(p);setForm({...p,cliente_id:p.cliente_id||''});setMsg('');setModal('editar');}}>Editar</Btn>}
+                        {(canCreate||isAdmin)&&p.status==='En venta'&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);setForm({...p,cliente_id:p.cliente_id||'',contacto_id:p.contacto_cliente_id||''});setMsg('');if(p.cliente_id){const{data:cx}=await sb.from('contactos').select('id,nombre,puesto,email,telefono').eq('cliente_id',p.cliente_id).order('es_principal',{ascending:false});setContactosCliente(cx||[]);}else{setContactosCliente([]);}setModal('editar');}}>Editar</Btn>}
                         {canAuthorize&&p.status==='En venta'&&<Btn size="sm" color="green" onClick={()=>autorizarVenta(p)}>Autorizar ✓</Btn>}
                         {(canCreate||isAdmin)&&p.status==='En venta'&&<Btn size="sm" color="red" onClick={()=>{setSel(p);setNotasPerdido('');setMsg('');setModal('perder');}}>Perdido</Btn>}
                       </div>
@@ -2091,7 +2157,7 @@ function VentasModule({user}){
               {/* Cliente con opción Nuevo */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cliente</label>
-                <select value={form.cliente_id||''} onChange={e=>setForm(f=>({...f,cliente_id:e.target.value,cliente_nuevo_nombre:''}))} className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
+                <select value={form.cliente_id||''} onChange={e=>handleClienteChange(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
                   <option value="">— Sin cliente asignado —</option>
                   <option value="__nuevo__">✚ Nuevo cliente (capturar nombre)</option>
                   {clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
@@ -2103,6 +2169,23 @@ function VentasModule({user}){
                     style={{borderColor:'#f59e0b',background:'#fffbeb'}}/>
                   <p className="text-xs text-amber-600">Se creará al guardar. Completa sus datos en el módulo Clientes una vez autorizado.</p>
                 </>)}
+              </div>
+
+              {/* Contacto del cliente */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Contacto del cliente</label>
+                {form.cliente_id&&form.cliente_id!=='__nuevo__'?(
+                  contactosCliente.length>0?(
+                    <select value={form.contacto_id||''} onChange={e=>setForm(f=>({...f,contacto_id:e.target.value}))} className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
+                      <option value="">— Sin contacto específico —</option>
+                      {contactosCliente.map(c=><option key={c.id} value={c.id}>{c.nombre}{c.puesto?` · ${c.puesto}`:''}{c.email?` · ${c.email}`:''}</option>)}
+                    </select>
+                  ):(
+                    <p className="text-xs text-gray-400 border border-dashed border-gray-200 rounded-xl px-3 py-2.5">Este cliente no tiene contactos aún. Agrégalos en el módulo Clientes.</p>
+                  )
+                ):(
+                  <p className="text-xs text-gray-300 border border-dashed border-gray-100 rounded-xl px-3 py-2.5">Selecciona un cliente primero</p>
+                )}
               </div>
 
               {/* Estado del proyecto */}
