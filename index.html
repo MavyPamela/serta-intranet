@@ -402,7 +402,6 @@ function InicioModule({user}){
 
 const MODS=[
   {id:'inicio',label:'Inicio',icon:'🏠',perm:null},
-  {id:'dashboard',label:'Dashboard',icon:'📊',perm:null},
   {id:'rrhh',label:'RR.HH.',icon:'👥',perm:'perm_empleados'},
   {id:'proveedores',label:'Proveedores',icon:'🏭',perm:'perm_proveedores'},
   {id:'clientes',label:'Clientes',icon:'🤝',perm:'perm_clientes'},
@@ -709,7 +708,6 @@ function EmpleadosTab({user}){
                   ['📧 Email',sel.email],['📱 Teléfono',sel.telefono||'—'],
                   ['📅 Fecha ingreso',fmtD(sel.fecha_ingreso)],['🎂 Cumpleaños',fmtD(sel.fecha_nacimiento)],
                   ['📋 Tipo contrato',sel.tipo_contrato||'—'],['🏖️ Días de vacaciones',sel.dias_vacaciones||0],
-                  ...(user.perm_ver_salarios||isAdmin?[['💰 Salario',sel.salario?fmt(sel.salario):'—']]:[]  ),
                   ['🕐 Último acceso',sel.ultimo_acceso?fmtD(sel.ultimo_acceso):'—'],
                 ].map(([k,v])=>(
                   <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800 break-all">{v}</p></div>
@@ -755,7 +753,6 @@ function EmpleadosTab({user}){
                 options={['Indefinido','Temporal','Por Proyecto','Honorarios'].map(r=>({value:r,label:r}))}/>
               <Input label="Fecha de ingreso 📅" type="date" value={form.fecha_ingreso} onChange={v=>setForm(f=>({...f,fecha_ingreso:v}))}/>
               <Input label="Días de vacaciones" type="number" value={form.dias_vacaciones} onChange={v=>setForm(f=>({...f,dias_vacaciones:v}))}/>
-              {(isAdmin||user.perm_ver_salarios)&&<Input label="Salario mensual" type="number" value={form.salario} onChange={v=>setForm(f=>({...f,salario:v}))}/>}
             </div>
             {/* Permisos de módulos */}
             {isAdmin&&(<>
@@ -773,7 +770,6 @@ function EmpleadosTab({user}){
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-4 bg-orange-50 rounded-xl mb-4">
                 <PC k="perm_alta_empleados" lbl="➕ Dar alta empleados"/>
                 <PC k="perm_aprobar_vacaciones" lbl="✅ Aprobar vacaciones"/>
-                <PC k="perm_ver_salarios" lbl="💰 Ver salarios"/>
                 <PC k="perm_autorizar_proyectos" lbl="📋 Autorizar proyectos"/>
                 <PC k="perm_asignar_pm" lbl="👤 Asignar PM"/>
                 <PC k="perm_requisiciones" lbl="📦 Crear requisiciones"/>
@@ -1279,7 +1275,7 @@ function InfoEmpresaTab({user}){
 // ═══════════════════════════════════════════════════════════════
 function RRHHModule({user}){
   const[tab,setTab]=useState('empleados');
-  const tabs=[{id:'empleados',label:'👥 Empleados'},{id:'vacaciones',label:'🏖️ Vacaciones'},{id:'capacitaciones',label:'📚 Capacitaciones'},{id:'organigrama',label:'🏢 Organigrama'},{id:'empresa',label:'ℹ️ Info Empresa'}];
+  const tabs=[{id:'empleados',label:'👥 Empleados'},{id:'vacaciones',label:'🏖️ Vacaciones'},{id:'capacitaciones',label:'📚 Capacitaciones'},{id:'organigrama',label:'🏢 Organigrama'}];
   return(
     <div className="p-6 fade">
       <h1 className="text-2xl font-bold text-gray-800 mb-5">Recursos Humanos</h1>
@@ -1291,7 +1287,6 @@ function RRHHModule({user}){
       
       {tab==='capacitaciones'&&<CapacitacionesTab user={user}/>}
       {tab==='organigrama'  &&<OrganigramaTab/>}
-      {tab==='empresa'      &&<InfoEmpresaTab user={user}/>}
     </div>
   );
 }
@@ -3573,7 +3568,6 @@ function App(){
       <Sidebar user={user} active={mod} setActive={setMod} onLogout={logout}/>
       <main className="flex-1 overflow-y-auto bg-gray-50">
         {mod==='inicio'&&<InicioModule user={user}/>}
-        {mod==='dashboard'&&<Dashboard user={user}/>}
         {mod==='rrhh'&&<RRHHModule user={user}/>}
         {mod==='ventas'&&<VentasModule user={user}/>}
         {mod==='proveedores'&&<ProveedoresModule user={user}/>}
