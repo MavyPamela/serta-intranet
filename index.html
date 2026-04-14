@@ -140,8 +140,9 @@ const MODS=[
   {id:'proveedores',label:'Proveedores',icon:'🏭',perm:'perm_proveedores'},
   {id:'clientes',label:'Clientes',icon:'🤝',perm:'perm_clientes'},
   {id:'ventas',label:'Ventas/CRM',icon:'💼',perm:'perm_ventas'},
-  {id:'finanzas',label:'Finanzas',icon:'💰',perm:'perm_finanzas'},
   {id:'proyectos',label:'Proyectos',icon:'🏗️',perm:'perm_proyectos'},
+  {id:'comisiones',label:'Comisiones',icon:'💲',perm:'perm_ventas'},
+  {id:'finanzas',label:'Finanzas',icon:'💰',perm:'perm_finanzas'},
   {id:'calidad',label:'Calidad',icon:'✅',perm:'perm_calidad'},
 ];
 function Sidebar({user,active,setActive,onLogout}){
@@ -2063,6 +2064,529 @@ function ProyectosModule({user}){
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+// MÓDULO COMISIONES
+// ══════════════════════════════════════════════════════════════
+
+// Fórmulas de cálculo (igual que el Excel)
+function calcComision(inp, cfg){
+  const{monto_cerrado=0,comision_conecta=0,costos_directos=0,empresa='SERTA',
+        flag_renovacion=false,flag_prospectado=false,flag_cliente_nuevo=false,flag_sindicado=false}=inp;
+  const c=(k,d)=>parseFloat(cfg[k]||d);
+  const factor_gipa    = c('factor_gipa',0.85);
+  const pct_pm         = empresa==='GIPA'?c('pct_pm_gipa',0.03):c('pct_pm_serta',0.04);
+  const tope_pm        = c('tope_pm',12000);
+  const pct_costo_max  = c('pct_costo_max',0.36);
+  const tope_cv        = c('tope_com_ventas',0.05);
+  const base_cv        = c('base_com_ventas',0.015);
+  const delta_ren      = c('delta_renovacion',-0.005);
+  const delta_pros     = c('delta_prospectado',0.015);
+  const delta_serta    = c('delta_serta',0.015);
+  const delta_cn       = c('delta_cliente_nuevo',0.015);
+  const delta_sind     = c('delta_sindicado',-0.015);
+
+  // Monto SERTA
+  const monto_serta = empresa==='GIPA'
+    ? monto_cerrado * factor_gipa
+    : monto_cerrado - comision_conecta;
+
+  // Comisión PM máxima
+  const comision_pm_max = Math.min(monto_serta * pct_pm, tope_pm);
+
+  // MSD antes de comisión ventas
+  const msd_antes_cv = monto_serta - costos_directos - comision_pm_max;
+
+  // % Comisión ventas
+  let pct = base_cv;
+  if(flag_renovacion)   pct += delta_ren;
+  if(flag_prospectado)  pct += delta_pros;
+  if(empresa==='SERTA') pct += delta_serta;
+  if(flag_cliente_nuevo)pct += delta_cn;
+  if(flag_sindicado)    pct += delta_sind;
+  const pct_com_ventas = Math.max(0, Math.min(tope_cv, pct));
+
+  // Comisión ventas máxima
+  const com_ventas_max = monto_serta * pct_com_ventas;
+
+  // Excedente
+  const excedente = monto_serta * pct_costo_max - costos_directos - comision_pm_max - com_ventas_max;
+
+  // Ajuste proporcional si excedente negativo
+  let com_final_pm, com_final_ventas;
+  if(excedente >= 0 || (comision_pm_max + com_ventas_max) === 0){
+    com_final_pm     = comision_pm_max;
+    com_final_ventas = com_ventas_max;
+  } else {
+    const total_com  = comision_pm_max + com_ventas_max;
+    const disponible = monto_serta * pct_costo_max - costos_directos;
+    com_final_pm     = Math.max(0, disponible * (comision_pm_max / total_com));
+    com_final_ventas = Math.max(0, disponible * (com_ventas_max  / total_com));
+  }
+
+  // MSD Final
+  const msd_final = monto_serta - costos_directos - com_final_pm - com_final_ventas;
+
+  return{monto_serta,comision_pm_max,msd_antes_cv,pct_com_ventas,com_ventas_max,
+         excedente,com_final_pm,com_final_ventas,msd_final};
+}
+
+// Mini gráfica de barras SVG
+function BarChart({data,labelKey,valueKey,color='#1a56db',height=180}){
+  if(!data||!data.length)return<div className="text-center text-xs text-gray-400 py-8">Sin datos para graficar</div>;
+  const max=Math.max(...data.map(d=>d[valueKey]||0))||1;
+  const w=56;const gap=8;const total=data.length*(w+gap);
+  return(
+    <div className="overflow-x-auto">
+      <svg width={Math.max(total,400)} height={height+40} className="font-sans">
+        {data.map((d,i)=>{
+          const h=Math.max(4,((d[valueKey]||0)/max)*(height-20));
+          const x=i*(w+gap);
+          const val=d[valueKey]||0;
+          return(
+            <g key={i}>
+              <rect x={x} y={height-h} width={w} height={h} rx="4" fill={color} opacity="0.85"/>
+              <text x={x+w/2} y={height-h-4} textAnchor="middle" fontSize="9" fill="#6b7280">
+                {val>=1000?`$${(val/1000).toFixed(0)}k`:fmt(val)}
+              </text>
+              <text x={x+w/2} y={height+14} textAnchor="middle" fontSize="9" fill="#374151">{d[labelKey]}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+const MESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+function ComisionesModule({user}){
+  const isSuperAdmin=user.rol==='Administrador';
+  const canSeeAll=isSuperAdmin||user.perm_autorizar_proyectos;
+
+  // Estado
+  const[rows,setRows]=useState([]);
+  const[proyectos,setProyectos]=useState([]);
+  const[usuarios,setUsuarios]=useState([]);
+  const[cfg,setCfg]=useState({});
+  const[loading,setLoading]=useState(true);
+  const[modal,setModal]=useState(null); // null | 'new' | 'edit' | 'view' | 'config'
+  const[selRow,setSelRow]=useState(null);
+  const[saving,setSaving]=useState(false);
+  const[msg,setMsg]=useState('');
+
+  // Filtros
+  const[fAnio,setFAnio]=useState(String(new Date().getFullYear()));
+  const[fEmpresa,setFEmpresa]=useState('');
+  const[fVendedor,setFVendedor]=useState('');
+  const[fMes,setFMes]=useState('');
+
+  // Form
+  const initForm=()=>({proyecto_id:'',vendedor_id:canSeeAll?'':String(user.id),
+    empresa:'SERTA',anio_fiscal:new Date().getFullYear(),mes_cierre:new Date().getMonth()+1,
+    fecha_cierre:'',monto_cerrado:'',comision_conecta:'',costos_directos:'',
+    flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false,
+    notas:'',status:'Borrador'});
+  const[form,setForm]=useState(initForm());
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const[{data:cfgData},{data:proy},{data:usu},{data:com}]=await Promise.all([
+      sb.from('config_comisiones').select('clave,valor'),
+      sb.from('proyectos').select('id,numero_proyecto,nombre,empresa,status').in('status',['Cerrado','Activo']).order('numero_proyecto',{ascending:false}),
+      sb.from('usuarios').select('id,nombre,rol').eq('activo',true).order('nombre'),
+      sb.from('comisiones').select(`
+        id,proyecto_id,vendedor_id,empresa,anio_fiscal,mes_cierre,fecha_cierre,
+        monto_cerrado,comision_conecta,costos_directos,
+        flag_renovacion,flag_prospectado,flag_cliente_nuevo,flag_sindicado,
+        monto_serta,comision_pm_max,msd_antes_cv,pct_com_ventas,
+        com_ventas_max,excedente,com_final_pm,com_final_ventas,msd_final,
+        notas,status,proyectos(nombre,numero_proyecto),usuarios(nombre)
+      `).order('created_at',{ascending:false})
+    ]);
+    const cfgMap={};(cfgData||[]).forEach(r=>{cfgMap[r.clave]=r.valor;});
+    setCfg(cfgMap);
+    setProyectos(proy||[]);
+    setUsuarios(usu||[]);
+    const todas=com||[];
+    if(canSeeAll)setRows(todas);
+    else setRows(todas.filter(r=>r.vendedor_id===user.id));
+    setLoading(false);
+  },[canSeeAll,user.id]);
+
+  useEffect(()=>{load();},[load]);
+
+  // Filtrado
+  const filtered=useMemo(()=>{
+    return rows.filter(r=>{
+      if(fAnio&&String(r.anio_fiscal)!==fAnio)return false;
+      if(fEmpresa&&r.empresa!==fEmpresa)return false;
+      if(fVendedor&&String(r.vendedor_id)!==fVendedor)return false;
+      if(fMes&&String(r.mes_cierre)!==fMes)return false;
+      return true;
+    });
+  },[rows,fAnio,fEmpresa,fVendedor,fMes]);
+
+  // KPIs
+  const kpis=useMemo(()=>{
+    const proyC=filtered.length;
+    const msdT=filtered.reduce((s,r)=>s+(r.msd_final||0),0);
+    const comPM=filtered.reduce((s,r)=>s+(r.com_final_pm||0),0);
+    const comV=filtered.reduce((s,r)=>s+(r.com_final_ventas||0),0);
+    return{proyC,msdT,comPM,comV};
+  },[filtered]);
+
+  // Datos gráfica por mes
+  const chartData=useMemo(()=>{
+    const byMes={};
+    filtered.forEach(r=>{
+      const k=r.mes_cierre;
+      if(!byMes[k])byMes[k]={label:MESES[(k||1)-1],msd_final:0};
+      byMes[k].msd_final+=(r.msd_final||0);
+    });
+    return Array.from({length:12},(_,i)=>byMes[i+1]||{label:MESES[i],msd_final:0});
+  },[filtered]);
+
+  // Calcular en tiempo real para el form
+  const calc=useMemo(()=>calcComision({
+    monto_cerrado:parseFloat(form.monto_cerrado)||0,
+    comision_conecta:parseFloat(form.comision_conecta)||0,
+    costos_directos:parseFloat(form.costos_directos)||0,
+    empresa:form.empresa,
+    flag_renovacion:form.flag_renovacion,
+    flag_prospectado:form.flag_prospectado,
+    flag_cliente_nuevo:form.flag_cliente_nuevo,
+    flag_sindicado:form.flag_sindicado,
+  },cfg),[form,cfg]);
+
+  const openNew=()=>{setForm(initForm());setMsg('');setModal('new');};
+  const openEdit=row=>{
+    setSelRow(row);
+    setForm({
+      proyecto_id:String(row.proyecto_id||''),
+      vendedor_id:String(row.vendedor_id||''),
+      empresa:row.empresa||'SERTA',
+      anio_fiscal:row.anio_fiscal||new Date().getFullYear(),
+      mes_cierre:row.mes_cierre||1,
+      fecha_cierre:row.fecha_cierre||'',
+      monto_cerrado:row.monto_cerrado||'',
+      comision_conecta:row.comision_conecta||'',
+      costos_directos:row.costos_directos||'',
+      flag_renovacion:row.flag_renovacion||false,
+      flag_prospectado:row.flag_prospectado||false,
+      flag_cliente_nuevo:row.flag_cliente_nuevo||false,
+      flag_sindicado:row.flag_sindicado||false,
+      notas:row.notas||'',
+      status:row.status||'Borrador',
+    });
+    setMsg('');setModal('edit');
+  };
+  const openView=row=>{setSelRow(row);setModal('view');};
+
+  const save=async(e,statusOverride)=>{
+    if(e)e.preventDefault();
+    setSaving(true);setMsg('');
+    const st=statusOverride||form.status;
+    try{
+      const{error}=await sb.rpc('fn_guardar_comision',{
+        p_id:modal==='edit'?(selRow.id||null):null,
+        p_proyecto_id:form.proyecto_id?parseInt(form.proyecto_id):null,
+        p_vendedor_id:form.vendedor_id?parseInt(form.vendedor_id):null,
+        p_empresa:form.empresa,
+        p_anio_fiscal:parseInt(form.anio_fiscal)||new Date().getFullYear(),
+        p_mes_cierre:parseInt(form.mes_cierre)||1,
+        p_fecha_cierre:form.fecha_cierre||null,
+        p_monto_cerrado:parseFloat(form.monto_cerrado)||0,
+        p_comision_conecta:parseFloat(form.comision_conecta)||0,
+        p_costos_directos:parseFloat(form.costos_directos)||0,
+        p_flag_renovacion:form.flag_renovacion,
+        p_flag_prospectado:form.flag_prospectado,
+        p_flag_cliente_nuevo:form.flag_cliente_nuevo,
+        p_flag_sindicado:form.flag_sindicado,
+        p_monto_serta:calc.monto_serta,
+        p_comision_pm_max:calc.comision_pm_max,
+        p_msd_antes_cv:calc.msd_antes_cv,
+        p_pct_com_ventas:calc.pct_com_ventas,
+        p_com_ventas_max:calc.com_ventas_max,
+        p_excedente:calc.excedente,
+        p_com_final_pm:calc.com_final_pm,
+        p_com_final_ventas:calc.com_final_ventas,
+        p_msd_final:calc.msd_final,
+        p_notas:form.notas||'',
+        p_status:st,
+      });
+      if(error)throw error;
+      setMsg(st==='Registrado'?'✅ Comisión registrada':'✅ Guardado como borrador');
+      await load();
+      setTimeout(()=>setModal(null),900);
+    }catch(err){setMsg('❌ Error: '+err.message);}
+    setSaving(false);
+  };
+
+  // Panel de configuración de parámetros
+  const[cfgEdit,setCfgEdit]=useState({});
+  const openCfg=()=>{
+    const copy={};Object.keys(cfg).forEach(k=>{copy[k]=String(cfg[k]||'');});
+    setCfgEdit(copy);setModal('config');
+  };
+  const saveCfg=async()=>{
+    setSaving(true);
+    const updates=Object.entries(cfgEdit).map(([clave,valor])=>
+      sb.from('config_comisiones').update({valor:parseFloat(valor)}).eq('clave',clave)
+    );
+    await Promise.all(updates);
+    await load();setSaving(false);setModal(null);
+  };
+
+  const anios=Array.from({length:5},(_,i)=>String(new Date().getFullYear()-i));
+
+  if(loading)return<div className="p-8"><Spin/></div>;
+
+  return(
+    <div className="p-6 max-w-full">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">💲 Comisiones</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Dashboard de comisiones por cierre de proyecto</p>
+        </div>
+        <div className="flex gap-2">
+          {isSuperAdmin&&<Btn color="outline" onClick={openCfg} size="sm">⚙️ Parámetros</Btn>}
+          <Btn onClick={openNew}>+ Nueva comisión</Btn>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5 flex flex-wrap gap-3 items-end">
+        <Sel label="Año fiscal" value={fAnio} onChange={setFAnio} options={[{value:'',label:'Todos'}, ...anios.map(a=>({value:a,label:a}))]}/>
+        <Sel label="Empresa" value={fEmpresa} onChange={setFEmpresa} options={[{value:'',label:'Todas'},{value:'SERTA',label:'SERTA'},{value:'GIPA',label:'GiPA'}]}/>
+        {canSeeAll&&<Sel label="Vendedor" value={fVendedor} onChange={setFVendedor} options={[{value:'',label:'Todos'},...usuarios.map(u=>({value:String(u.id),label:u.nombre}))]}/>}
+        <Sel label="Mes" value={fMes} onChange={setFMes} options={[{value:'',label:'Todos'},...MESES.map((m,i)=>({value:String(i+1),label:m}))]}/>
+        <Btn color="gray" size="sm" onClick={()=>{setFAnio(String(new Date().getFullYear()));setFEmpresa('');setFVendedor('');setFMes('');}}>Limpiar</Btn>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+        <StatCard title="Proyectos" value={kpis.proyC} icon="📁" color="blue"/>
+        <StatCard title="MSD Total" value={fmt(kpis.msdT)} icon="📈" color="green"/>
+        <StatCard title="Com. PM" value={fmt(kpis.comPM)} icon="👤" color="purple"/>
+        <StatCard title="Com. Ventas" value={fmt(kpis.comV)} icon="🤝" color="orange"/>
+      </div>
+
+      {/* Gráfica */}
+      {filtered.length>0&&(
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5">
+          <h3 className="font-semibold text-gray-700 text-sm mb-4">MSD por mes (año {fAnio||'todos'})</h3>
+          <BarChart data={chartData} labelKey="label" valueKey="msd_final" color="#1a56db"/>
+        </div>
+      )}
+
+      {/* Tabla */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Proyecto</th>
+                {canSeeAll&&<th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Vendedor</th>}
+                <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Empresa</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Mes/Año</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Monto Cerrado</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Monto SERTA</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Com. PM</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Com. Ventas</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">MSD Final</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Status</th>
+                <th className="px-3 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filtered.length===0&&<tr><td colSpan={canSeeAll?11:10}><Empty msg="No hay comisiones registradas con estos filtros"/></td></tr>}
+              {filtered.map(r=>(
+                <tr key={r.id} className="hover:bg-gray-50 transition">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-gray-800">{r.proyectos?.nombre||'—'}</p>
+                    <p className="text-xs text-gray-400">{r.proyectos?.numero_proyecto}</p>
+                  </td>
+                  {canSeeAll&&<td className="px-4 py-3 text-gray-600 text-xs">{r.usuarios?.nombre||'—'}</td>}
+                  <td className="px-3 py-3 text-center"><Badge text={r.empresa} color={r.empresa==='SERTA'?'blue':'purple'}/></td>
+                  <td className="px-3 py-3 text-center text-xs text-gray-600">{r.mes_cierre?MESES[r.mes_cierre-1]:''} {r.anio_fiscal}</td>
+                  <td className="px-4 py-3 text-right text-gray-700 font-mono text-xs">{fmt(r.monto_cerrado)}</td>
+                  <td className="px-4 py-3 text-right text-gray-700 font-mono text-xs">{fmt(r.monto_serta)}</td>
+                  <td className="px-4 py-3 text-right text-purple-700 font-mono text-xs font-medium">{fmt(r.com_final_pm)}</td>
+                  <td className="px-4 py-3 text-right text-orange-700 font-mono text-xs font-medium">{fmt(r.com_final_ventas)}</td>
+                  <td className="px-4 py-3 text-right text-green-700 font-mono text-xs font-bold">{fmt(r.msd_final)}</td>
+                  <td className="px-3 py-3 text-center"><Badge text={r.status} color={r.status==='Registrado'?'green':'gray'}/></td>
+                  <td className="px-3 py-3">
+                    <div className="flex gap-1">
+                      <button onClick={()=>openView(r)} className="text-gray-400 hover:text-blue-600 text-xs px-2 py-1 rounded hover:bg-blue-50 transition">Ver</button>
+                      {(canSeeAll||r.vendedor_id===user.id)&&r.status==='Borrador'&&
+                        <button onClick={()=>openEdit(r)} className="text-gray-400 hover:text-gray-700 text-xs px-2 py-1 rounded hover:bg-gray-100 transition">Editar</button>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* MODAL: Nueva / Editar comisión */}
+      {(modal==='new'||modal==='edit')&&(
+        <Modal title={modal==='new'?'Nueva comisión':'Editar comisión'} onClose={()=>setModal(null)} size="xl">
+          <form onSubmit={e=>save(e,'Borrador')} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Proyecto */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Proyecto <span className="text-red-500">*</span></label>
+                <select value={form.proyecto_id} onChange={e=>{
+                  const pid=e.target.value;
+                  const p=proyectos.find(x=>String(x.id)===pid);
+                  setForm(f=>({...f,proyecto_id:pid,empresa:p?.empresa||f.empresa}));
+                }} required className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-200">
+                  <option value="">— Seleccionar proyecto —</option>
+                  {proyectos.map(p=><option key={p.id} value={p.id}>{p.numero_proyecto} · {p.nombre} ({p.empresa})</option>)}
+                </select>
+              </div>
+              {/* Vendedor */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Vendedor</label>
+                {canSeeAll
+                  ?<select value={form.vendedor_id} onChange={e=>setForm(f=>({...f,vendedor_id:e.target.value}))} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-200">
+                    <option value="">— Sin asignar —</option>
+                    {usuarios.map(u=><option key={u.id} value={u.id}>{u.nombre}</option>)}
+                  </select>
+                  :<input value={user.nombre} disabled className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-gray-50"/>
+                }
+              </div>
+              <Sel label="Empresa" value={form.empresa} onChange={v=>setForm(f=>({...f,empresa:v}))} options={[{value:'SERTA',label:'SERTA'},{value:'GIPA',label:'GiPA'}]}/>
+              <Sel label="Año fiscal" value={String(form.anio_fiscal)} onChange={v=>setForm(f=>({...f,anio_fiscal:parseInt(v)}))} options={anios.map(a=>({value:a,label:a}))}/>
+              <Sel label="Mes de cierre" value={String(form.mes_cierre)} onChange={v=>setForm(f=>({...f,mes_cierre:parseInt(v)}))} options={MESES.map((m,i)=>({value:String(i+1),label:m}))}/>
+              <Input label="Fecha de cierre" type="date" value={form.fecha_cierre} onChange={v=>setForm(f=>({...f,fecha_cierre:v}))}/>
+              <Input label="Monto cerrado (sin IVA)" type="number" value={form.monto_cerrado} onChange={v=>setForm(f=>({...f,monto_cerrado:v}))} placeholder="0.00" required/>
+              {form.empresa==='SERTA'&&<Input label="Comisión Conecta" type="number" value={form.comision_conecta} onChange={v=>setForm(f=>({...f,comision_conecta:v}))} placeholder="0.00"/>}
+              <Input label="Costos directos" type="number" value={form.costos_directos} onChange={v=>setForm(f=>({...f,costos_directos:v}))} placeholder="0.00"/>
+            </div>
+
+            {/* Flags */}
+            <div className="bg-gray-50 rounded-xl p-4">
+              <p className="text-xs font-semibold text-gray-600 mb-3 uppercase">Características del proyecto</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[['flag_renovacion','Renovación','−0.5%'],['flag_prospectado','Prospectado','＋1.5%'],['flag_cliente_nuevo','Cliente Nuevo','＋1.5%'],['flag_sindicado','Sindicado','−1.5%']].map(([key,label,delta])=>(
+                  <label key={key} className="flex items-center gap-2 cursor-pointer bg-white rounded-lg border border-gray-200 px-3 py-2 hover:border-blue-300 transition">
+                    <input type="checkbox" checked={form[key]||false} onChange={e=>setForm(f=>({...f,[key]:e.target.checked}))} className="rounded"/>
+                    <span className="text-xs font-medium text-gray-700">{label}</span>
+                    <span className={`text-xs ml-auto ${delta.startsWith('−')?'text-red-500':'text-green-600'}`}>{delta}</span>
+                  </label>
+                ))}
+              </div>
+              {form.empresa==='SERTA'&&<p className="text-xs text-blue-600 mt-2">+1.5% adicional por ser proyecto SERTA</p>}
+            </div>
+
+            {/* Preview de cálculo */}
+            {parseFloat(form.monto_cerrado)>0&&(
+              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                <p className="text-xs font-semibold text-blue-700 mb-3 uppercase">Vista previa del cálculo</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <div><p className="text-gray-500">Monto SERTA</p><p className="font-bold text-gray-800">{fmt(calc.monto_serta)}</p></div>
+                  <div><p className="text-gray-500">% Com. Ventas</p><p className="font-bold text-gray-800">{(calc.pct_com_ventas*100).toFixed(2)}%</p></div>
+                  <div><p className="text-gray-500">Excedente</p><p className={`font-bold ${calc.excedente<0?'text-red-600':'text-green-700'}`}>{fmt(calc.excedente)}</p></div>
+                  <div className="bg-white rounded-lg p-2 border border-blue-200">
+                    <p className="text-gray-500">Com. PM Final</p><p className="font-bold text-purple-700">{fmt(calc.com_final_pm)}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 border border-blue-200">
+                    <p className="text-gray-500">Com. Ventas Final</p><p className="font-bold text-orange-700">{fmt(calc.com_final_ventas)}</p>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-2 border border-green-200 col-span-2">
+                    <p className="text-gray-500">MSD Final</p><p className="font-bold text-green-700 text-base">{fmt(calc.msd_final)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Textarea label="Notas" value={form.notas} onChange={v=>setForm(f=>({...f,notas:v}))}/>
+            {msg&&<p className="text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+            <div className="flex justify-end gap-2 mt-2">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn color="outline" disabled={saving} onClick={e=>{e.preventDefault();save(e,'Borrador');}}>Guardar borrador</Btn>
+              <Btn color="green" disabled={saving||!form.monto_cerrado} onClick={e=>{e.preventDefault();save(e,'Registrado');}}>
+                {saving?'Guardando...':'✓ Registrar'}
+              </Btn>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* MODAL: Ver detalle */}
+      {modal==='view'&&selRow&&(
+        <Modal title={`Comisión — ${selRow.proyectos?.nombre||'Proyecto'}`} onClose={()=>setModal(null)} size="lg">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div><p className="text-xs text-gray-500">Proyecto</p><p className="font-medium">{selRow.proyectos?.nombre}</p><p className="text-xs text-gray-400">{selRow.proyectos?.numero_proyecto}</p></div>
+              <div><p className="text-xs text-gray-500">Vendedor</p><p className="font-medium">{selRow.usuarios?.nombre||'—'}</p></div>
+              <div><p className="text-xs text-gray-500">Empresa</p><Badge text={selRow.empresa} color={selRow.empresa==='SERTA'?'blue':'purple'}/></div>
+              <div><p className="text-xs text-gray-500">Mes / Año</p><p className="font-medium">{selRow.mes_cierre?MESES[selRow.mes_cierre-1]:''} {selRow.anio_fiscal}</p></div>
+              <div><p className="text-xs text-gray-500">Fecha cierre</p><p className="font-medium">{fmtD(selRow.fecha_cierre)}</p></div>
+              <div><p className="text-xs text-gray-500">Status</p><Badge text={selRow.status} color={selRow.status==='Registrado'?'green':'gray'}/></div>
+            </div>
+            <hr/>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div><p className="text-xs text-gray-500">Monto Cerrado</p><p className="font-mono font-bold">{fmt(selRow.monto_cerrado)}</p></div>
+              {selRow.empresa==='SERTA'&&<div><p className="text-xs text-gray-500">Com. Conecta</p><p className="font-mono">{fmt(selRow.comision_conecta)}</p></div>}
+              <div><p className="text-xs text-gray-500">Costos Directos</p><p className="font-mono">{fmt(selRow.costos_directos)}</p></div>
+              <div><p className="text-xs text-gray-500">Monto SERTA</p><p className="font-mono font-bold text-blue-700">{fmt(selRow.monto_serta)}</p></div>
+              <div><p className="text-xs text-gray-500">% Com. Ventas</p><p className="font-mono">{((selRow.pct_com_ventas||0)*100).toFixed(2)}%</p></div>
+              <div><p className="text-xs text-gray-500">Excedente</p><p className={`font-mono font-bold ${(selRow.excedente||0)<0?'text-red-600':'text-green-700'}`}>{fmt(selRow.excedente)}</p></div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-purple-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-500">Com. PM Final</p><p className="font-bold text-purple-700 text-lg">{fmt(selRow.com_final_pm)}</p></div>
+              <div className="bg-orange-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-500">Com. Ventas Final</p><p className="font-bold text-orange-700 text-lg">{fmt(selRow.com_final_ventas)}</p></div>
+              <div className="bg-green-50 rounded-xl p-3 text-center border-2 border-green-200"><p className="text-xs text-gray-500">MSD Final</p><p className="font-bold text-green-700 text-xl">{fmt(selRow.msd_final)}</p></div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {selRow.flag_renovacion&&<Badge text="Renovación" color="gray"/>}
+              {selRow.flag_prospectado&&<Badge text="Prospectado" color="green"/>}
+              {selRow.flag_cliente_nuevo&&<Badge text="Cliente Nuevo" color="blue"/>}
+              {selRow.flag_sindicado&&<Badge text="Sindicado" color="orange"/>}
+            </div>
+            {selRow.notas&&<div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-600">{selRow.notas}</div>}
+            {(canSeeAll||selRow.vendedor_id===user.id)&&selRow.status==='Borrador'&&(
+              <div className="flex justify-end"><Btn onClick={()=>{openEdit(selRow);}}>✏️ Editar</Btn></div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* MODAL: Configurar parámetros */}
+      {modal==='config'&&(
+        <Modal title="⚙️ Parámetros de comisiones" onClose={()=>setModal(null)} size="md">
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 bg-yellow-50 px-3 py-2 rounded-lg">Modifica los porcentajes base. Los cambios afectarán cálculos futuros; los registros guardados conservan los valores al momento de registrarse.</p>
+            {[
+              ['factor_gipa','Factor GiPA','%'],['pct_pm_gipa','% Com. PM GiPA','%'],['pct_pm_serta','% Com. PM SERTA','%'],
+              ['tope_pm','Tope máximo PM','$'],['pct_costo_max','% Costo máximo','%'],
+              ['tope_com_ventas','Tope com. ventas','%'],['base_com_ventas','Base com. ventas','%'],
+              ['delta_renovacion','Δ Renovación','%'],['delta_prospectado','Δ Prospectado','%'],
+              ['delta_serta','Δ SERTA','%'],['delta_cliente_nuevo','Δ Cliente Nuevo','%'],['delta_sindicado','Δ Sindicado','%'],
+            ].map(([k,label,unit])=>(
+              <div key={k} className="flex items-center gap-3">
+                <label className="text-xs text-gray-600 w-48">{label}</label>
+                <input type="number" step="0.001" value={cfgEdit[k]||''} onChange={e=>setCfgEdit(c=>({...c,[k]:e.target.value}))}
+                  className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-28 focus:ring-2 focus:ring-blue-200"/>
+                <span className="text-xs text-gray-400">{unit}</span>
+              </div>
+            ))}
+            <div className="flex justify-end gap-2 pt-2">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn disabled={saving} onClick={saveCfg}>{saving?'Guardando...':'Guardar parámetros'}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function App(){
   const[user,setUser]=useState(()=>getS());
   const[mod,setMod]=useState('dashboard');
@@ -2079,6 +2603,7 @@ function App(){
         {mod==='clientes'&&<ClientesModule user={user}/>}
         {mod==='finanzas'&&<Pronto titulo="Finanzas" icon="💰" semana="2"/>}
         {mod==='proyectos'&&<ProyectosModule user={user}/>}
+        {mod==='comisiones'&&<ComisionesModule user={user}/>}
         {mod==='calidad'&&<Pronto titulo="Calidad" icon="✅" semana="3"/>}
       </main>
     </div>
