@@ -1510,7 +1510,7 @@ function VentasModule({user}){
     return matchQ&&matchS;
   }),[data,search,fStatus]);
 
-  const efNuevo={nombre:'',cliente_id:'',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:''};
+  const efNuevo={nombre:'',cliente_id:'',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:'',flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false};
 
   const crearProyecto=async e=>{
     e.preventDefault();setSaving(true);setMsg('');
@@ -1526,7 +1526,11 @@ function VentasModule({user}){
         p_fecha_inicio_proyecto:form.fecha_inicio_proyecto||null,
         p_importe:parseFloat(form.importe)||null,
         p_notas:form.notas||'',
-        p_created_by:user.id
+        p_created_by:user.id,
+        p_flag_renovacion:!!form.flag_renovacion,
+        p_flag_prospectado:!!form.flag_prospectado,
+        p_flag_cliente_nuevo:!!form.flag_cliente_nuevo,
+        p_flag_sindicado:!!form.flag_sindicado,
       });
       if(error)throw error;
       setMsg(`✅ Proyecto #${r[0].numero_proyecto} registrado en pipeline`);
@@ -1550,6 +1554,10 @@ function VentasModule({user}){
         fecha_inicio_proyecto:form.fecha_inicio_proyecto||null,
         importe:parseFloat(form.importe)||null,
         notas:form.notas||'',
+        flag_renovacion:!!form.flag_renovacion,
+        flag_prospectado:!!form.flag_prospectado,
+        flag_cliente_nuevo:!!form.flag_cliente_nuevo,
+        flag_sindicado:!!form.flag_sindicado,
         updated_at:new Date().toISOString()
       }).eq('id',sel.id);
       if(error)throw error;
@@ -1676,6 +1684,17 @@ function VentasModule({user}){
                 <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
               ))}
             </div>
+            {(sel.flag_renovacion||sel.flag_prospectado||sel.flag_cliente_nuevo||sel.flag_sindicado)&&(
+              <div className="bg-amber-50 rounded-xl p-3">
+                <p className="text-xs text-gray-500 mb-2">🏷️ Características de comisión</p>
+                <div className="flex flex-wrap gap-2">
+                  {sel.flag_renovacion&&<Badge text="🔄 Renovación" color="gray"/>}
+                  {sel.flag_prospectado&&<Badge text="🎯 Prospectado" color="green"/>}
+                  {sel.flag_cliente_nuevo&&<Badge text="🆕 Cliente Nuevo" color="blue"/>}
+                  {sel.flag_sindicado&&<Badge text="🏭 Sindicado" color="orange"/>}
+                </div>
+              </div>
+            )}
             {sel.notas&&<div className="bg-yellow-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-1">📝 Notas</p><p className="text-sm">{sel.notas}</p></div>}
             {canAuthorize&&sel.status==='En venta'&&(
               <div className="flex justify-end gap-2 pt-2">
@@ -1708,6 +1727,22 @@ function VentasModule({user}){
               <Input label="Año fiscal" type="number" value={form.anio_fiscal||new Date().getFullYear()} onChange={v=>setForm(f=>({...f,anio_fiscal:v}))}/>
               <Input label="Fecha inicio de venta" type="date" value={form.fecha_inicio_venta||''} onChange={v=>setForm(f=>({...f,fecha_inicio_venta:v}))}/>
               <Input label="Fecha inicio del proyecto" type="date" value={form.fecha_inicio_proyecto||''} onChange={v=>setForm(f=>({...f,fecha_inicio_proyecto:v}))}/>
+            </div>
+            {/* Flags de comisión */}
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 mb-4">
+              <p className="text-xs font-semibold text-amber-700 uppercase mb-3">Características para cálculo de comisión</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[['flag_renovacion','🔄 Renovación','Cliente que ya compró antes','−0.5%'],['flag_prospectado','🎯 Prospectado','Vendedor prospectó activamente','＋1.5%'],['flag_cliente_nuevo','🆕 Cliente Nuevo','Primera vez que compra','＋1.5%'],['flag_sindicado','🏭 Sindicado','Empresa con sindicato','−1.5%']].map(([key,label,desc,delta])=>(
+                  <label key={key} className={`flex flex-col gap-1 cursor-pointer rounded-xl border-2 p-3 transition ${form[key]?'border-amber-400 bg-white':'border-amber-100 bg-white/60 hover:border-amber-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700">{label}</span>
+                      <input type="checkbox" checked={!!form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.checked}))} className="accent-amber-500 w-4 h-4"/>
+                    </div>
+                    <span className="text-xs text-gray-400">{desc}</span>
+                    <span className={`text-xs font-medium ${delta.startsWith('−')?'text-red-500':'text-green-600'}`}>{delta} com. ventas</span>
+                  </label>
+                ))}
+              </div>
             </div>
             <Textarea label="Notas" value={form.notas||''} onChange={v=>setForm(f=>({...f,notas:v}))}/>
             {msg&&<p className="mt-3 text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
@@ -1794,7 +1829,7 @@ function ProyectosModule({user}){
     return matchQ&&matchS;
   }),[data,search,fStatus]);
 
-  const efNuevo={nombre:'',cliente_id:'',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:'',fecha_inicio_proyecto:'',importe:'',notas:''};
+  const efNuevo={nombre:'',cliente_id:'',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:'',fecha_inicio_proyecto:'',importe:'',notas:'',flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false};
 
   const crearProyecto=async e=>{
     e.preventDefault();setSaving(true);setMsg('');
@@ -1810,7 +1845,11 @@ function ProyectosModule({user}){
         p_fecha_inicio_proyecto:form.fecha_inicio_proyecto||null,
         p_importe:parseFloat(form.importe)||null,
         p_notas:form.notas||'',
-        p_created_by:user.id
+        p_created_by:user.id,
+        p_flag_renovacion:!!form.flag_renovacion,
+        p_flag_prospectado:!!form.flag_prospectado,
+        p_flag_cliente_nuevo:!!form.flag_cliente_nuevo,
+        p_flag_sindicado:!!form.flag_sindicado,
       });
       if(error)throw error;
       setMsg(`✅ Proyecto #${r[0].numero_proyecto} creado correctamente`);
@@ -2051,6 +2090,22 @@ function ProyectosModule({user}){
               <Input label="Fecha inicio de venta" type="date" value={form.fecha_inicio_venta||''} onChange={v=>setForm(f=>({...f,fecha_inicio_venta:v}))}/>
               <Input label="Fecha inicio del proyecto" type="date" value={form.fecha_inicio_proyecto||''} onChange={v=>setForm(f=>({...f,fecha_inicio_proyecto:v}))}/>
             </div>
+            {/* Flags de comisión */}
+            <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 mb-4">
+              <p className="text-xs font-semibold text-amber-700 uppercase mb-3">Características para cálculo de comisión</p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[['flag_renovacion','🔄 Renovación','Renovación de cliente','−0.5%'],['flag_prospectado','🎯 Prospectado','Prospectado activamente','＋1.5%'],['flag_cliente_nuevo','🆕 Cliente Nuevo','Primera vez que compra','＋1.5%'],['flag_sindicado','🏭 Sindicado','Empresa con sindicato','−1.5%']].map(([key,label,desc,delta])=>(
+                  <label key={key} className={`flex flex-col gap-1 cursor-pointer rounded-xl border-2 p-3 transition ${form[key]?'border-amber-400 bg-white':'border-amber-100 bg-white/60 hover:border-amber-200'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-gray-700">{label}</span>
+                      <input type="checkbox" checked={!!form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.checked}))} className="accent-amber-500 w-4 h-4"/>
+                    </div>
+                    <span className="text-xs text-gray-400">{desc}</span>
+                    <span className={`text-xs font-medium ${delta.startsWith('−')?'text-red-500':'text-green-600'}`}>{delta} com. ventas</span>
+                  </label>
+                ))}
+              </div>
+            </div>
             <Textarea label="Notas" value={form.notas||''} onChange={v=>setForm(f=>({...f,notas:v}))}/>
             {msg&&<p className="mt-3 text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
             <div className="flex justify-end gap-2 mt-5">
@@ -2192,7 +2247,7 @@ function ComisionesModule({user}){
     setLoading(true);
     const[{data:cfgData},{data:proy},{data:usu},{data:com}]=await Promise.all([
       sb.from('config_comisiones').select('clave,valor'),
-      sb.from('proyectos').select('id,numero_proyecto,nombre,empresa,status').in('status',['Cerrado','Activo']).order('numero_proyecto',{ascending:false}),
+      sb.from('proyectos').select('id,numero_proyecto,nombre,empresa,status,importe,flag_renovacion,flag_prospectado,flag_cliente_nuevo,flag_sindicado').in('status',['Cerrado','Activo']).order('numero_proyecto',{ascending:false}),
       sb.from('usuarios').select('id,nombre,rol').eq('activo',true).order('nombre'),
       sb.from('comisiones').select(`
         id,proyecto_id,vendedor_id,empresa,anio_fiscal,mes_cierre,fecha_cierre,
@@ -2442,7 +2497,17 @@ function ComisionesModule({user}){
                 <select value={form.proyecto_id} onChange={e=>{
                   const pid=e.target.value;
                   const p=proyectos.find(x=>String(x.id)===pid);
-                  setForm(f=>({...f,proyecto_id:pid,empresa:p?.empresa||f.empresa}));
+                  setForm(f=>({...f,
+                    proyecto_id:pid,
+                    empresa:p?.empresa||f.empresa,
+                    // Auto-poblar flags desde el proyecto
+                    flag_renovacion:   p?.flag_renovacion   ?? f.flag_renovacion,
+                    flag_prospectado:  p?.flag_prospectado  ?? f.flag_prospectado,
+                    flag_cliente_nuevo:p?.flag_cliente_nuevo?? f.flag_cliente_nuevo,
+                    flag_sindicado:    p?.flag_sindicado    ?? f.flag_sindicado,
+                    // Importe del proyecto como sugerencia para monto_cerrado
+                    monto_cerrado: f.monto_cerrado || (p?.importe||''),
+                  }));
                 }} required className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-200">
                   <option value="">— Seleccionar proyecto —</option>
                   {proyectos.map(p=><option key={p.id} value={p.id}>{p.numero_proyecto} · {p.nombre} ({p.empresa})</option>)}
@@ -2470,7 +2535,10 @@ function ComisionesModule({user}){
 
             {/* Flags */}
             <div className="bg-gray-50 rounded-xl p-4">
-              <p className="text-xs font-semibold text-gray-600 mb-3 uppercase">Características del proyecto</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-gray-600 uppercase">Características del proyecto</p>
+                {form.proyecto_id&&<span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Pre-cargadas del proyecto · puedes ajustar</span>}
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[['flag_renovacion','Renovación','−0.5%'],['flag_prospectado','Prospectado','＋1.5%'],['flag_cliente_nuevo','Cliente Nuevo','＋1.5%'],['flag_sindicado','Sindicado','−1.5%']].map(([key,label,delta])=>(
                   <label key={key} className="flex items-center gap-2 cursor-pointer bg-white rounded-lg border border-gray-200 px-3 py-2 hover:border-blue-300 transition">
