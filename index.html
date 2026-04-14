@@ -1340,7 +1340,7 @@ function ProveedoresModule({user}){
     return !q||(p.nombre||'').toLowerCase().includes(q)||(p.rfc||'').toLowerCase().includes(q)||(p.razon_social||'').toLowerCase().includes(q);
   }),[data,search]);
 
-  const ef={nombre:'',razon_social:'',rfc:'',email:'',telefono:'',direccion:'',ciudad:'',estado:'',cp:'',categoria:actividades[0]||'Aforos',calificacion:3,banco:'',cuenta_banco:'',clabe:'',notas:'',activo:true};
+  const ef={nombre:'',razon_social:'',rfc:'',email:'',telefono:'',direccion:'',ciudad:'',estado:'',cp:'',categorias:[],calificacion:3,tipo_comprobante:'fisica_factura',banco:'',cuenta_banco:'',sucursal_banco:'',clabe:'',notas:'',activo:true};
 
   const checkRfc=async(rfc,excluirId=null)=>{
     if(!rfc||rfc.length<5){setRfcWarn('');return;}
@@ -1352,7 +1352,7 @@ function ProveedoresModule({user}){
   const save=async e=>{
     e.preventDefault();setSaving(true);setMsg('');
     try{
-      const obj={nombre:form.nombre,razon_social:form.razon_social,rfc:(form.rfc||'').toUpperCase().trim(),email:form.email,telefono:form.telefono,direccion:form.direccion,ciudad:form.ciudad,estado:form.estado,cp:form.cp,categoria:form.categoria,calificacion:parseInt(form.calificacion)||3,banco:form.banco,cuenta_banco:form.cuenta_banco,clabe:form.clabe,notas:form.notas,activo:form.activo!==false};
+      const obj={nombre:form.nombre,razon_social:form.razon_social,rfc:(form.rfc||'').toUpperCase().trim(),email:form.email,telefono:form.telefono,direccion:form.direccion,ciudad:form.ciudad,estado:form.estado,cp:form.cp,categoria:(form.categorias||[]).join(','),calificacion:parseInt(form.calificacion)||3,tipo_comprobante:form.tipo_comprobante||'fisica_factura',regimen_fiscal:form.tipo_comprobante||'fisica_factura',banco:form.banco,cuenta_banco:form.cuenta_banco,sucursal_banco:form.sucursal_banco||'',clabe:form.clabe,notas:form.notas,activo:form.activo!==false};
       if(modal==='nuevo'){const{error}=await sb.from('proveedores').insert(obj);if(error)throw error;}
       else{const{error}=await sb.from('proveedores').update(obj).eq('id',sel.id);if(error)throw error;}
       setMsg('✅ Guardado correctamente');await load();
@@ -1427,7 +1427,7 @@ function ProveedoresModule({user}){
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadContactos(p.id);setModal('ver');}}>Ver</Btn>
-                        {isAdmin&&<Btn size="sm" color="outline" onClick={()=>{setSel(p);setForm({...p});setRfcWarn('');setModal('editar');setMsg('');}}>Editar</Btn>}
+                        {isAdmin&&<Btn size="sm" color="outline" onClick={()=>{setSel(p);setForm({...p,categorias:p.categoria?(p.categoria.split(',').map(x=>x.trim()).filter(Boolean)):[],tipo_comprobante:p.tipo_comprobante||p.regimen_fiscal||'fisica_factura'});setRfcWarn('');setModal('editar');setMsg('');}}>Editar</Btn>}
                         {isAdmin&&<Btn size="sm" color={p.activo?'red':'green'} onClick={async()=>{await sb.from('proveedores').update({activo:!p.activo}).eq('id',p.id);load();}}>{p.activo?'Baja':'Alta'}</Btn>}
                       </div>
                     </td>
@@ -1444,7 +1444,7 @@ function ProveedoresModule({user}){
         <Modal title="Detalle del proveedor" onClose={()=>setModal(null)} size="lg">
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[['🏢 Nombre',sel.nombre],['📋 Razón social',sel.razon_social||'—'],['🔢 RFC',sel.rfc||'—'],['📧 Email',sel.email||'—'],['📞 Teléfono',sel.telefono||'—'],['📍 Dirección',sel.direccion||'—'],['🏙️ Ciudad',sel.ciudad||'—'],['🗺️ Estado',sel.estado||'—'],['📮 C.P.',sel.cp||'—'],['🏷️ Actividad',sel.categoria||'—'],['🧾 Régimen',sel.regimen_fiscal||'—'],['⭐ Calificación',sel.calificacion?estrellas(sel.calificacion):'—']].map(([k,v])=>(
+              {[['🏢 Nombre',sel.nombre],['📋 Razón social',sel.razon_social||'—'],['🔢 RFC',sel.rfc||'—'],['📧 Email',sel.email||'—'],['📞 Teléfono',sel.telefono||'—'],['📍 Dirección',sel.direccion||'—'],['🏙️ Ciudad',sel.ciudad||'—'],['🗺️ Estado',sel.estado||'—'],['📮 C.P.',sel.cp||'—'],['🏷️ Actividades',sel.categoria||'—'],['🧾 Tipo comprobante',REGIMENES[sel.tipo_comprobante||sel.regimen_fiscal]?.label||sel.tipo_comprobante||'—'],['⭐ Calificación',sel.calificacion?estrellas(sel.calificacion):'—']].map(([k,v])=>(
                 <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
               ))}
             </div>
@@ -1452,7 +1452,7 @@ function ProveedoresModule({user}){
               <div className="bg-blue-50 rounded-xl p-4">
                 <p className="text-xs font-semibold text-gray-600 mb-2">🏦 Datos bancarios</p>
                 <div className="grid grid-cols-3 gap-3">
-                  {[['Banco',sel.banco],['Cuenta',sel.cuenta_banco],['CLABE',sel.clabe]].map(([k,v])=>(
+                  {[['Banco',sel.banco],['Sucursal',sel.sucursal_banco||'—'],['Cuenta',sel.cuenta_banco],['CLABE',sel.clabe]].map(([k,v])=>(
                     <div key={k}><p className="text-xs text-gray-500">{k}</p><p className="text-sm font-medium font-mono">{v||'—'}</p></div>
                   ))}
                 </div>
@@ -1522,23 +1522,53 @@ function ProveedoresModule({user}){
               </div>
               <Input label="Email" type="email" value={form.email} onChange={v=>setForm(f=>({...f,email:v}))}/>
               <Input label="Teléfono" value={form.telefono} onChange={v=>setForm(f=>({...f,telefono:v}))}/>
-              <Sel label="Actividad" value={form.categoria} onChange={v=>setForm(f=>({...f,categoria:v}))} options={actividades.map(c=>({value:c,label:c}))}/>
+              <div className="flex flex-col gap-1 md:col-span-2">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Actividades <span className="text-gray-300 font-normal normal-case">(selecciona una o varias)</span></label>
+                <div className="flex flex-wrap gap-2 p-3 border border-gray-200 rounded-xl bg-gray-50 min-h-10">
+                  {actividades.map(a=>{
+                    const sel=(form.categorias||[]).includes(a);
+                    return(<button key={a} type="button"
+                      onClick={()=>setForm(f=>({...f,categorias:sel?(f.categorias||[]).filter(x=>x!==a):[...(f.categorias||[]),a]}))}
+                      className="px-3 py-1 rounded-full text-xs font-medium border transition"
+                      style={sel?{background:'#00b5b5',color:'white',borderColor:'#00b5b5'}:{background:'white',color:'#6b7280',borderColor:'#e5e7eb'}}>
+                      {a}
+                    </button>);
+                  })}
+                  {actividades.length===0&&<p className="text-xs text-gray-400">Sin actividades configuradas</p>}
+                </div>
+              </div>
               <Input label="Dirección" value={form.direccion} onChange={v=>setForm(f=>({...f,direccion:v}))} className="md:col-span-2"/>
               <Input label="Ciudad" value={form.ciudad} onChange={v=>setForm(f=>({...f,ciudad:v}))}/>
               <Input label="Estado" value={form.estado} onChange={v=>setForm(f=>({...f,estado:v}))}/>
               <Input label="C.P." value={form.cp} onChange={v=>setForm(f=>({...f,cp:v}))}/>
               <Sel label="Calificación" value={String(form.calificacion||3)} onChange={v=>setForm(f=>({...f,calificacion:parseInt(v)}))} options={[1,2,3,4,5].map(n=>({value:String(n),label:'★'.repeat(n)+'☆'.repeat(5-n)}))}/>
             </div>
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Régimen fiscal (para retenciones)</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-              <Sel label="Tipo de persona" value={form.tipo_persona||'moral'} onChange={v=>setForm(f=>({...f,tipo_persona:v}))} options={[{value:'moral',label:'Persona Moral'},{value:'fisica',label:'Persona Física'}]}/>
-              <Sel label="Régimen fiscal" value={form.regimen_fiscal||'moral'} onChange={v=>setForm(f=>({...f,regimen_fiscal:v}))} options={form.tipo_persona==='fisica'?[{value:'fisica_honorarios',label:'Servicios Profesionales / Honorarios'},{value:'fisica_arrendamiento',label:'Arrendamiento'},{value:'fisica_actividad_emp',label:'Actividad Empresarial'},{value:'resico',label:'RESICO'},{value:'sin_obligaciones',label:'Sin obligaciones fiscales'}]:[{value:'moral',label:'Persona Moral'},{value:'sin_obligaciones',label:'Sin obligaciones / Público General'},{value:'extranjero',label:'Extranjero'}]}/>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Tipo de comprobante <span className="text-gray-400 font-normal normal-case">(define el cálculo de IVA y retenciones en requisiciones)</span></p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              {[
+                {v:'fisica_factura',   label:'Persona física\ncon factura',    sub:'IVA · Ret.IVA · ISR'},
+                {v:'fisica_honorarios',label:'Persona física\ncon honorarios', sub:'IVA · Ret.IVA · ISR'},
+                {v:'extranjero',       label:'Persona\nextranjera',            sub:'Sin retenciones'},
+                {v:'resico',           label:'Persona física\nRESICO',         sub:'Solo IVA'},
+              ].map(opt=>{
+                const sel=(form.tipo_comprobante||'fisica_factura')===opt.v;
+                return(
+                  <button key={opt.v} type="button"
+                    onClick={()=>setForm(f=>({...f,tipo_comprobante:opt.v}))}
+                    className="rounded-xl border-2 p-3 text-left transition"
+                    style={sel?{borderColor:'#00b5b5',background:'rgba(0,181,181,0.07)'}:{borderColor:'#e5e7eb',background:'white'}}>
+                    <p className="text-xs font-semibold text-gray-700 leading-tight whitespace-pre-line">{opt.label}</p>
+                    <p className="text-xs mt-1" style={{color:sel?'#008a8a':'#9ca3af'}}>{opt.sub}</p>
+                  </button>
+                );
+              })}
             </div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Datos bancarios (opcional)</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
               <Input label="Banco" value={form.banco||''} onChange={v=>setForm(f=>({...f,banco:v}))}/>
+              <Input label="No. de sucursal" value={form.sucursal_banco||''} onChange={v=>setForm(f=>({...f,sucursal_banco:v}))} placeholder="Ej. 0012"/>
               <Input label="No. de cuenta" value={form.cuenta_banco||''} onChange={v=>setForm(f=>({...f,cuenta_banco:v}))}/>
-              <Input label="CLABE interbancaria" value={form.clabe||''} onChange={v=>setForm(f=>({...f,clabe:v}))}/>
+              <Input label="CLABE interbancaria" value={form.clabe||''} onChange={v=>setForm(f=>({...f,clabe:v}))} className="md:col-span-1"/>
             </div>
             <Textarea label="Notas" value={form.notas} onChange={v=>setForm(f=>({...f,notas:v}))}/>
             {modal==='editar'&&<label className="flex items-center gap-2 text-sm mt-3 cursor-pointer"><input type="checkbox" checked={!!form.activo} onChange={e=>setForm(f=>({...f,activo:e.target.checked}))} className="accent-blue-600"/>Proveedor activo</label>}
@@ -1799,7 +1829,7 @@ function Pronto({titulo,icon,semana}){
 // VENTAS — Pipeline comercial
 // ═══════════════════════════════════════════════════════════════
 const TIPOS_ESTUDIO=['Cuantitativo','Cualitativo','Cuantitativo y Cualitativo','Precios','Mystery Shopper','Fuentes secundarias','Otro'];
-const STATUS_COLOR={'En venta':'purple',Prospecto:'yellow',Activo:'green',Cancelado:'red',Cerrado:'blue',Perdido:'gray'};
+const STATUS_COLOR={Venta:'purple','En espera de autorización':'orange',Autorizado:'green',Cancelado:'red','En venta':'purple',Perdido:'gray',Activo:'green',Cerrado:'blue'};
 
 function VentasModule({user}){
   const[data,setData]=useState([]);
@@ -1839,14 +1869,24 @@ function VentasModule({user}){
     return matchQ&&matchS;
   }),[data,search,fStatus]);
 
-  const efNuevo={nombre:'',cliente_id:'',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:'',flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false};
+  const efNuevo={nombre:'',cliente_id:'',cliente_nuevo_nombre:'',estado_venta:'Venta',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:'',flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false};
+  const ESTADOS_VENTA=['Venta','En espera de autorización','Autorizado','Cancelado'];
+  const ESTADO_COLOR={'Venta':'blue','En espera de autorización':'orange','Autorizado':'green','Cancelado':'red'};
 
   const crearProyecto=async e=>{
     e.preventDefault();setSaving(true);setMsg('');
     try{
+      // Si es cliente nuevo, crear primero con el nombre
+      let clienteId=form.cliente_id?parseInt(form.cliente_id):null;
+      if(form.cliente_id==='__nuevo__'&&form.cliente_nuevo_nombre.trim()){
+        const{data:nc,error:eNC}=await sb.from('clientes').insert({nombre:form.cliente_nuevo_nombre.trim(),activo:true,estatus:'Activo'}).select('id').single();
+        if(eNC)throw eNC;
+        clienteId=nc.id;
+        setClientes(prev=>[...prev,{id:nc.id,nombre:form.cliente_nuevo_nombre.trim()}]);
+      }
       const{data:r,error}=await sb.rpc('fn_crear_proyecto',{
         p_nombre:form.nombre,
-        p_cliente_id:form.cliente_id?parseInt(form.cliente_id):null,
+        p_cliente_id:clienteId,
         p_empresa:form.empresa||'SERTA',
         p_tipo_estudio:form.tipo_estudio||'',
         p_num_pagos:parseInt(form.num_pagos)||1,
@@ -1862,6 +1902,10 @@ function VentasModule({user}){
         p_flag_sindicado:!!form.flag_sindicado,
       });
       if(error)throw error;
+      // Actualizar estado_venta si no es "Venta" (el RPC crea con 'En venta')
+      if(form.estado_venta&&form.estado_venta!=='Venta'){
+        await sb.from('proyectos').update({status:form.estado_venta}).eq('id',r[0].id);
+      }
       setMsg(`✅ Proyecto #${r[0].numero_proyecto} registrado en pipeline`);
       await load();
       setTimeout(()=>{setModal(null);setMsg('');},1300);
@@ -1883,6 +1927,7 @@ function VentasModule({user}){
         fecha_inicio_proyecto:form.fecha_inicio_proyecto||null,
         importe:parseFloat(form.importe)||null,
         notas:form.notas||'',
+        status:form.estado_venta||form.status||'En venta',
         flag_renovacion:!!form.flag_renovacion,
         flag_prospectado:!!form.flag_prospectado,
         flag_cliente_nuevo:!!form.flag_cliente_nuevo,
@@ -1912,8 +1957,8 @@ function VentasModule({user}){
     setSaving(false);
   };
 
-  const totalPor=st=>(data||[]).filter(p=>p.status===st).length;
-  const importeTotal=()=>(data||[]).filter(p=>p.status==='En venta'&&p.importe).reduce((s,p)=>s+(p.importe||0),0);
+  const totalPor=st=>(data||[]).filter(p=>p.status===st||(st==='Venta'&&p.status==='En venta')).length;
+  const importeTotal=()=>(data||[]).filter(p=>(p.status==='Venta'||p.status==='En venta'||p.status==='En espera de autorización')&&p.importe).reduce((s,p)=>s+(p.importe||0),0);
 
   return(
     <div className="p-6 fade">
@@ -1928,9 +1973,9 @@ function VentasModule({user}){
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <div onClick={()=>setFStatus(fStatus==='En venta'?'':'En venta')} className={`rounded-2xl p-4 border-2 cursor-pointer transition border-gray-100 bg-white hover:border-gray-200`} style={fStatus==='En venta'?{borderColor:'#00b5b5',background:'rgba(0,181,181,0.07)'}:{}}>
+        <div onClick={()=>setFStatus(fStatus==='Venta'?'':'Venta')} className="rounded-2xl p-4 border-2 cursor-pointer transition border-gray-100 bg-white hover:border-gray-200" style={fStatus==='Venta'?{borderColor:'#00b5b5',background:'rgba(0,181,181,0.07)'}:{}}>
           <div className="flex items-center justify-between"><span className="text-sm text-gray-500">En venta</span><span>💼</span></div>
-          <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('En venta')}</p>
+          <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('Venta')}</p>
         </div>
         <div className="rounded-2xl p-4 border-2 border-gray-100 bg-white">
           <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Importe pipeline</span><span>💵</span></div>
@@ -2042,13 +2087,39 @@ function VentasModule({user}){
             {modal==='nuevo'&&<p className="text-xs text-gray-400 mb-4 bg-purple-50 rounded-xl px-3 py-2">Se asignará un folio automáticamente. El número de estudio se genera cuando el Director lo active en Proyectos.</p>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <Input label="Nombre del proyecto" value={form.nombre||''} onChange={v=>setForm(f=>({...f,nombre:v}))} required className="md:col-span-2"/>
+
+              {/* Cliente con opción Nuevo */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-600">Cliente</label>
-                <select value={form.cliente_id||''} onChange={e=>setForm(f=>({...f,cliente_id:e.target.value}))} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cliente</label>
+                <select value={form.cliente_id||''} onChange={e=>setForm(f=>({...f,cliente_id:e.target.value,cliente_nuevo_nombre:''}))} className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
                   <option value="">— Sin cliente asignado —</option>
+                  <option value="__nuevo__">✚ Nuevo cliente (capturar nombre)</option>
                   {clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
+                {form.cliente_id==='__nuevo__'&&(<>
+                  <input value={form.cliente_nuevo_nombre||''} onChange={e=>setForm(f=>({...f,cliente_nuevo_nombre:e.target.value}))}
+                    placeholder="Nombre del nuevo cliente..." required
+                    className="border rounded-xl px-3 py-2 text-sm mt-1"
+                    style={{borderColor:'#f59e0b',background:'#fffbeb'}}/>
+                  <p className="text-xs text-amber-600">Se creará al guardar. Completa sus datos en el módulo Clientes una vez autorizado.</p>
+                </>)}
               </div>
+
+              {/* Estado del proyecto */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Estado del proyecto</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[['Venta','#7c3aed'],['En espera de autorización','#f59e0b'],['Autorizado','#10b981'],['Cancelado','#ef4444']].map(([st,col])=>{
+                    const activo=(form.estado_venta||form.status||'Venta')===st;
+                    return(<button key={st} type="button" onClick={()=>setForm(f=>({...f,estado_venta:st}))}
+                      className="rounded-xl border-2 px-2 py-2 text-xs font-medium transition text-left leading-tight"
+                      style={activo?{borderColor:col,background:col+'18',color:col}:{borderColor:'#e5e7eb',color:'#6b7280'}}>
+                      {st}
+                    </button>);
+                  })}
+                </div>
+              </div>
+
               <Sel label="Empresa" value={form.empresa||'SERTA'} onChange={v=>setForm(f=>({...f,empresa:v}))} options={['SERTA','GIPA'].map(x=>({value:x,label:x}))}/>
               <Sel label="Tipo de estudio" value={form.tipo_estudio||''} onChange={v=>setForm(f=>({...f,tipo_estudio:v}))} options={TIPOS_ESTUDIO.map(x=>({value:x,label:x}))}/>
               <Input label="Importe sin IVA" type="number" value={form.importe||''} onChange={v=>setForm(f=>({...f,importe:v}))} placeholder="0.00"/>
@@ -2989,13 +3060,14 @@ function ComisionesModule({user}){
 // ══════════════════════════════════════════════════════════════
 
 const REGIMENES={
-  moral:            {label:'Persona Moral',          iva:true, ret_iva:true,  isr:false},
-  fisica_honorarios:{label:'Honorarios/Serv. Prof.',  iva:true, ret_iva:true,  isr:true},
-  fisica_arrendamiento:{label:'Arrendamiento',        iva:true, ret_iva:true,  isr:true},
-  fisica_actividad_emp:{label:'Act. Empresarial',     iva:true, ret_iva:true,  isr:true},
-  resico:           {label:'RESICO',                  iva:true, ret_iva:false, isr:false},
-  sin_obligaciones: {label:'Sin obligaciones',        iva:false,ret_iva:false, isr:false},
-  extranjero:       {label:'Extranjero',              iva:false,ret_iva:false, isr:false},
+  fisica_factura:   {label:'Persona física con factura',    iva:true, ret_iva:true,  isr:true},
+  fisica_honorarios:{label:'Persona física con honorarios', iva:true, ret_iva:true,  isr:true},
+  extranjero:       {label:'Persona extranjera',            iva:false,ret_iva:false, isr:false},
+  resico:           {label:'Persona física RESICO',         iva:true, ret_iva:false, isr:false},
+  // compatibilidad heredada
+  moral:            {label:'Persona Moral',                 iva:true, ret_iva:true,  isr:false},
+  fisica_actividad_emp:{label:'Act. Empresarial',           iva:true, ret_iva:true,  isr:true},
+  sin_obligaciones: {label:'Sin obligaciones',              iva:false,ret_iva:false, isr:false},
 };
 
 function calcImpuestos(subtotal, regimen){
@@ -3405,7 +3477,7 @@ SERTA de México`
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
               <div><p className="text-xs text-gray-500">Proyecto</p><p className="font-medium">{sel.proyectos?.nombre||'—'}</p><p className="text-xs text-gray-400">#{sel.proyectos?.numero_proyecto}</p></div>
               <div><p className="text-xs text-gray-500">Cliente</p><p className="font-medium">{sel.proyectos?.cliente?.nombre||'—'}</p></div>
-              <div><p className="text-xs text-gray-500">Proveedor</p><p className="font-medium">{sel.proveedores?.nombre||'—'}</p><p className="text-xs text-gray-400">{REGIMENES[sel.proveedores?.regimen_fiscal]?.label||''}</p></div>
+              <div><p className="text-xs text-gray-500">Proveedor</p><p className="font-medium">{sel.proveedores?.nombre||'—'}</p><p className="text-xs text-gray-400">{REGIMENES[sel.proveedores?.tipo_comprobante||sel.proveedores?.regimen_fiscal]?.label||''}</p></div>
               <div><p className="text-xs text-gray-500">Director autorizador</p><p className="font-medium">{sel.director?.nombre||'—'}</p></div>
               <div><p className="text-xs text-gray-500">Registrado por</p><p className="font-medium">{sel.creador?.nombre||'—'}</p></div>
               <div><p className="text-xs text-gray-500">Fecha</p><p className="font-medium">{fmtD(sel.created_at?.split('T')[0])}</p></div>
