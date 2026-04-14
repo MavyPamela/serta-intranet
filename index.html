@@ -1466,10 +1466,282 @@ function Pronto({titulo,icon,semana}){
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PROYECTOS
+// VENTAS — Pipeline comercial
 // ═══════════════════════════════════════════════════════════════
 const TIPOS_ESTUDIO=['Cuantitativo','Cualitativo','Cuantitativo y Cualitativo','Precios','Mystery Shopper','Fuentes secundarias','Otro'];
-const STATUS_COLOR={Prospecto:'yellow',Activo:'green',Cancelado:'red',Cerrado:'blue'};
+const STATUS_COLOR={'En venta':'purple',Prospecto:'yellow',Activo:'green',Cancelado:'red',Cerrado:'blue',Perdido:'gray'};
+
+function VentasModule({user}){
+  const[data,setData]=useState([]);
+  const[clientes,setClientes]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[fStatus,setFStatus]=useState('En venta');
+  const[search,setSearch]=useState('');
+  const[modal,setModal]=useState(null); // null|'nuevo'|'ver'|'perder'
+  const[sel,setSel]=useState(null);
+  const[form,setForm]=useState({});
+  const[notasPerdido,setNotasPerdido]=useState('');
+  const[saving,setSaving]=useState(false);
+  const[msg,setMsg]=useState('');
+
+  const canCreate=user.rol==='Administrador'||user.perm_ventas||user.perm_proyectos;
+  const canAuthorize=user.rol==='Administrador'||user.perm_autorizar_proyectos;
+  const isAdmin=user.rol==='Administrador';
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const{data:d}=await sb.from('proyectos')
+      .select('*, cliente:clientes(nombre,razon_social), creador:empleados!proyectos_created_by_fkey(nombre)')
+      .in('status',['En venta','Perdido'])
+      .order('numero_proyecto',{ascending:false});
+    setData(d||[]);setLoading(false);
+  },[]);
+
+  useEffect(()=>{
+    load();
+    sb.from('clientes').select('id,nombre').order('nombre').then(({data:d})=>setClientes(d||[]));
+  },[load]);
+
+  const filt=useMemo(()=>(data||[]).filter(p=>{
+    const q=search.toLowerCase();
+    const matchQ=!q||(p.nombre||'').toLowerCase().includes(q)||(p.numero_proyecto?.toString()||'').includes(q)||(p.cliente?.nombre||'').toLowerCase().includes(q);
+    const matchS=!fStatus||p.status===fStatus;
+    return matchQ&&matchS;
+  }),[data,search,fStatus]);
+
+  const efNuevo={nombre:'',cliente_id:'',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:''};
+
+  const crearProyecto=async e=>{
+    e.preventDefault();setSaving(true);setMsg('');
+    try{
+      const{data:r,error}=await sb.rpc('fn_crear_proyecto',{
+        p_nombre:form.nombre,
+        p_cliente_id:form.cliente_id?parseInt(form.cliente_id):null,
+        p_empresa:form.empresa||'SERTA',
+        p_tipo_estudio:form.tipo_estudio||'',
+        p_num_pagos:parseInt(form.num_pagos)||1,
+        p_anio_fiscal:parseInt(form.anio_fiscal)||new Date().getFullYear(),
+        p_fecha_inicio_venta:form.fecha_inicio_venta||null,
+        p_fecha_inicio_proyecto:form.fecha_inicio_proyecto||null,
+        p_importe:parseFloat(form.importe)||null,
+        p_notas:form.notas||'',
+        p_created_by:user.id
+      });
+      if(error)throw error;
+      setMsg(`✅ Proyecto #${r[0].numero_proyecto} registrado en pipeline`);
+      await load();
+      setTimeout(()=>{setModal(null);setMsg('');},1300);
+    }catch(er){setMsg('❌ '+(er.message||'Error'));}
+    setSaving(false);
+  };
+
+  const editarProyecto=async e=>{
+    e.preventDefault();setSaving(true);setMsg('');
+    try{
+      const{error}=await sb.from('proyectos').update({
+        nombre:form.nombre,
+        cliente_id:form.cliente_id?parseInt(form.cliente_id):null,
+        empresa:form.empresa,
+        tipo_estudio:form.tipo_estudio,
+        num_pagos:parseInt(form.num_pagos)||1,
+        anio_fiscal:parseInt(form.anio_fiscal)||null,
+        fecha_inicio_venta:form.fecha_inicio_venta||null,
+        fecha_inicio_proyecto:form.fecha_inicio_proyecto||null,
+        importe:parseFloat(form.importe)||null,
+        notas:form.notas||'',
+        updated_at:new Date().toISOString()
+      }).eq('id',sel.id);
+      if(error)throw error;
+      setMsg('✅ Proyecto actualizado');
+      await load();
+      setTimeout(()=>{setModal(null);setMsg('');},1100);
+    }catch(er){setMsg('❌ '+(er.message||'Error'));}
+    setSaving(false);
+  };
+
+  const autorizarVenta=async(p)=>{
+    if(!confirm(`¿Autorizar "${p.nombre}"?\nEl proyecto pasará al módulo de Proyectos para asignar PM y ejecutarse.`))return;
+    const{error}=await sb.rpc('fn_autorizar_venta',{p_proyecto_id:p.id});
+    if(error){alert('Error: '+error.message);return;}
+    await load();
+  };
+
+  const marcarPerdido=async e=>{
+    e.preventDefault();setSaving(true);
+    const{error}=await sb.rpc('fn_marcar_perdido',{p_proyecto_id:sel.id,p_notas:notasPerdido});
+    if(!error){await load();setModal(null);setNotasPerdido('');}
+    else{setMsg('❌ '+error.message);}
+    setSaving(false);
+  };
+
+  const totalPor=st=>(data||[]).filter(p=>p.status===st).length;
+  const importeTotal=()=>(data||[]).filter(p=>p.status==='En venta'&&p.importe).reduce((s,p)=>s+(p.importe||0),0);
+
+  return(
+    <div className="p-6 fade">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Ventas</h1>
+          <p className="text-sm text-gray-500">Pipeline de proyectos en proceso de venta</p>
+        </div>
+        {canCreate&&<Btn onClick={()=>{setForm(efNuevo);setMsg('');setModal('nuevo');}}>+ Nuevo proyecto</Btn>}
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <div onClick={()=>setFStatus(fStatus==='En venta'?'':'En venta')} className={`rounded-2xl p-4 border-2 cursor-pointer transition ${fStatus==='En venta'?'border-purple-400 bg-purple-50':'border-gray-100 bg-white hover:border-gray-200'}`}>
+          <div className="flex items-center justify-between"><span className="text-sm text-gray-500">En venta</span><span>💼</span></div>
+          <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('En venta')}</p>
+        </div>
+        <div className="rounded-2xl p-4 border-2 border-gray-100 bg-white">
+          <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Importe pipeline</span><span>💵</span></div>
+          <p className="text-xl font-bold mt-1 text-gray-800">{fmt(importeTotal())}</p>
+          <p className="text-xs text-gray-400 mt-0.5">sin IVA</p>
+        </div>
+        <div onClick={()=>setFStatus(fStatus==='Perdido'?'':'Perdido')} className={`rounded-2xl p-4 border-2 cursor-pointer transition ${fStatus==='Perdido'?'border-gray-400 bg-gray-50':'border-gray-100 bg-white hover:border-gray-200'}`}>
+          <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Perdidos</span><span>❌</span></div>
+          <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('Perdido')}</p>
+        </div>
+        <div className="rounded-2xl p-4 border-2 border-green-100 bg-green-50">
+          <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Autorizados</span><span>✅</span></div>
+          <p className="text-xs text-green-600 font-medium mt-2">Se mueven a Proyectos al autorizarse</p>
+        </div>
+      </div>
+
+      {/* Buscador */}
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar nombre, folio, cliente..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 mb-4"/>
+
+      {/* Tabla */}
+      {loading?<Spin/>:filt.length===0?<Empty msg="Sin proyectos en pipeline"/>:(
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50 border-b border-gray-100">
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Folio</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Proyecto</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden md:table-cell">Cliente</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Importe s/IVA</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600 hidden lg:table-cell">Inicio venta</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-600">Status</th>
+                <th className="px-4 py-3 text-right font-semibold text-gray-600">Acciones</th>
+              </tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {filt.map(p=>(
+                  <tr key={p.id} className="hover:bg-gray-50/70 transition">
+                    <td className="px-4 py-3 font-mono text-gray-600 font-medium">#{p.numero_proyecto}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-gray-800">{p.nombre}</p>
+                      <p className="text-xs text-gray-400">{p.empresa} · {p.tipo_estudio||'—'}</p>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 hidden md:table-cell">{p.cliente?.nombre||'—'}</td>
+                    <td className="px-4 py-3 text-gray-700 font-medium hidden lg:table-cell">{p.importe?fmt(p.importe):'—'}</td>
+                    <td className="px-4 py-3 text-gray-500 text-xs hidden lg:table-cell">{p.fecha_inicio_venta?fmtD(p.fecha_inicio_venta):'—'}</td>
+                    <td className="px-4 py-3"><Badge text={p.status} color={STATUS_COLOR[p.status]||'gray'}/></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1 flex-wrap">
+                        <Btn size="sm" color="outline" onClick={()=>{setSel(p);setModal('ver');}}>Ver</Btn>
+                        {(canCreate||isAdmin)&&p.status==='En venta'&&<Btn size="sm" color="outline" onClick={()=>{setSel(p);setForm({...p,cliente_id:p.cliente_id||''});setMsg('');setModal('editar');}}>Editar</Btn>}
+                        {canAuthorize&&p.status==='En venta'&&<Btn size="sm" color="green" onClick={()=>autorizarVenta(p)}>Autorizar ✓</Btn>}
+                        {(canCreate||isAdmin)&&p.status==='En venta'&&<Btn size="sm" color="red" onClick={()=>{setSel(p);setNotasPerdido('');setMsg('');setModal('perder');}}>Perdido</Btn>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal VER ── */}
+      {modal==='ver'&&sel&&(
+        <Modal title={`Proyecto #${sel.numero_proyecto}`} onClose={()=>setModal(null)} size="lg">
+          <div className="space-y-4">
+            <Badge text={sel.status} color={STATUS_COLOR[sel.status]||'gray'}/>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {[
+                ['📌 Nombre',sel.nombre],
+                ['🏢 Cliente',sel.cliente?.nombre||'—'],
+                ['🏷️ Empresa',sel.empresa||'—'],
+                ['🔬 Tipo de estudio',sel.tipo_estudio||'—'],
+                ['💵 Importe s/IVA',sel.importe?fmt(sel.importe):'—'],
+                ['🗓️ Año fiscal',sel.anio_fiscal||'—'],
+                ['💳 No. de pagos',sel.num_pagos||'—'],
+                ['📅 Inicio venta',sel.fecha_inicio_venta?fmtD(sel.fecha_inicio_venta):'—'],
+                ['🚀 Inicio proyecto',sel.fecha_inicio_proyecto?fmtD(sel.fecha_inicio_proyecto):'—'],
+                ['👤 Registrado por',sel.creador?.nombre||'—'],
+              ].map(([k,v])=>(
+                <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
+              ))}
+            </div>
+            {sel.notas&&<div className="bg-yellow-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-1">📝 Notas</p><p className="text-sm">{sel.notas}</p></div>}
+            {canAuthorize&&sel.status==='En venta'&&(
+              <div className="flex justify-end gap-2 pt-2">
+                <Btn color="red" onClick={()=>{setModal('perder');setNotasPerdido('');}}>Marcar perdido</Btn>
+                <Btn color="green" onClick={()=>{autorizarVenta(sel);setModal(null);}}>✅ Autorizar → Proyectos</Btn>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Modal NUEVO / EDITAR ── */}
+      {(modal==='nuevo'||modal==='editar')&&(
+        <Modal title={modal==='nuevo'?'Nuevo proyecto en pipeline':'Editar proyecto'} onClose={()=>setModal(null)} size="xl">
+          <form onSubmit={modal==='nuevo'?crearProyecto:editarProyecto}>
+            {modal==='nuevo'&&<p className="text-xs text-gray-400 mb-4 bg-purple-50 rounded-xl px-3 py-2">Se asignará un folio automáticamente. El número de estudio se genera cuando el Director lo active en Proyectos.</p>}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <Input label="Nombre del proyecto" value={form.nombre||''} onChange={v=>setForm(f=>({...f,nombre:v}))} required className="md:col-span-2"/>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Cliente</label>
+                <select value={form.cliente_id||''} onChange={e=>setForm(f=>({...f,cliente_id:e.target.value}))} className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white">
+                  <option value="">— Sin cliente asignado —</option>
+                  {clientes.map(c=><option key={c.id} value={c.id}>{c.nombre}</option>)}
+                </select>
+              </div>
+              <Sel label="Empresa" value={form.empresa||'SERTA'} onChange={v=>setForm(f=>({...f,empresa:v}))} options={['SERTA','GIPA'].map(x=>({value:x,label:x}))}/>
+              <Sel label="Tipo de estudio" value={form.tipo_estudio||''} onChange={v=>setForm(f=>({...f,tipo_estudio:v}))} options={TIPOS_ESTUDIO.map(x=>({value:x,label:x}))}/>
+              <Input label="Importe sin IVA" type="number" value={form.importe||''} onChange={v=>setForm(f=>({...f,importe:v}))} placeholder="0.00"/>
+              <Input label="No. de pagos" type="number" value={form.num_pagos||1} onChange={v=>setForm(f=>({...f,num_pagos:v}))}/>
+              <Input label="Año fiscal" type="number" value={form.anio_fiscal||new Date().getFullYear()} onChange={v=>setForm(f=>({...f,anio_fiscal:v}))}/>
+              <Input label="Fecha inicio de venta" type="date" value={form.fecha_inicio_venta||''} onChange={v=>setForm(f=>({...f,fecha_inicio_venta:v}))}/>
+              <Input label="Fecha inicio del proyecto" type="date" value={form.fecha_inicio_proyecto||''} onChange={v=>setForm(f=>({...f,fecha_inicio_proyecto:v}))}/>
+            </div>
+            <Textarea label="Notas" value={form.notas||''} onChange={v=>setForm(f=>({...f,notas:v}))}/>
+            {msg&&<p className="mt-3 text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+            <div className="flex justify-end gap-2 mt-5">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn type="submit" disabled={saving||!form.nombre}>{saving?'Guardando...':modal==='nuevo'?'Crear proyecto':'Guardar cambios'}</Btn>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Modal MARCAR PERDIDO ── */}
+      {modal==='perder'&&sel&&(
+        <Modal title="Marcar como perdido" onClose={()=>setModal(null)} size="md">
+          <form onSubmit={marcarPerdido} className="space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-sm text-red-800 font-medium">📌 {sel.nombre}</p>
+              <p className="text-xs text-red-600 mt-1">Esta acción marcará el proyecto como perdido. Se puede consultar en el historial.</p>
+            </div>
+            <Textarea label="Motivo o notas (opcional)" value={notasPerdido} onChange={v=>setNotasPerdido(v)} placeholder="¿Por qué se perdió este proyecto?"/>
+            {msg&&<p className="text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+            <div className="flex justify-end gap-2">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn type="submit" color="red" disabled={saving}>{saving?'Guardando...':'Confirmar perdido'}</Btn>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PROYECTOS
+// ═══════════════════════════════════════════════════════════════
 
 function ProyectosModule({user}){
   const[data,setData]=useState([]);
@@ -1491,10 +1763,12 @@ function ProyectosModule({user}){
   const isAdmin=user.rol==='Administrador';
   const isPM=(p)=>p&&(p.pm_id===user.id||isAdmin);
 
+  const PROJ_STATUS=['Prospecto','Activo','Cerrado','Cancelado'];
   const load=useCallback(async()=>{
     setLoading(true);
     const{data:d}=await sb.from('proyectos')
       .select('*, cliente:clientes(nombre), pm:empleados!proyectos_pm_id_fkey(nombre,foto_url)')
+      .in('status',['Prospecto','Activo','Cerrado','Cancelado'])
       .order('numero_proyecto',{ascending:false});
     setData(d||[]);setLoading(false);
   },[]);
@@ -1588,9 +1862,8 @@ function ProyectosModule({user}){
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Proyectos</h1>
-          <p className="text-sm text-gray-500">{filt.length} proyectos</p>
+          <p className="text-sm text-gray-500">{filt.length} proyectos · Los proyectos llegan desde el módulo Ventas</p>
         </div>
-        {canCreate&&<Btn onClick={()=>{setForm(efNuevo);setMsg('');setModal('nuevo');}}>+ Nuevo proyecto</Btn>}
       </div>
 
       {/* Stats */}
@@ -1801,7 +2074,7 @@ function App(){
       <main className="flex-1 overflow-y-auto bg-gray-50">
         {mod==='dashboard'&&<Dashboard user={user}/>}
         {mod==='rrhh'&&<RRHHModule user={user}/>}
-        {mod==='ventas'&&<Pronto titulo="Ventas / CRM" icon="💼" semana="2"/>}
+        {mod==='ventas'&&<VentasModule user={user}/>}
         {mod==='proveedores'&&<ProveedoresModule user={user}/>}
         {mod==='clientes'&&<ClientesModule user={user}/>}
         {mod==='finanzas'&&<Pronto titulo="Finanzas" icon="💰" semana="2"/>}
