@@ -241,105 +241,160 @@ function LoginPage({onLogin}){
 // ══════════════════════════════════════════════════════════════
 // MÓDULO INICIO — Misión, Visión, Valores, Filosofía
 // ══════════════════════════════════════════════════════════════
+// Tarjeta hover para Misión/Visión/Filosofía
+function PillarCard({icon,titulo,tagline,desc,accentBg}){
+  const[h,setH]=useState(false);
+  return(
+    <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
+      style={{height:'200px',position:'relative',overflow:'hidden',cursor:'default',borderRadius:'16px',
+        boxShadow:h?'0 12px 32px rgba(0,0,0,0.18)':'0 2px 8px rgba(0,0,0,0.06)',
+        transition:'box-shadow 0.3s ease',background:'white',border:'1px solid #f1f5f9'}}>
+      {/* Fondo de color — se expande en hover */}
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:accentBg,
+        opacity:h?1:0,transition:'opacity 0.35s ease'}}/>
+      {/* Estado normal — icon + titulo centrado */}
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,display:'flex',
+        flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'10px',
+        opacity:h?0:1,transform:h?'translateY(-12px)':'translateY(0)',
+        transition:'opacity 0.2s ease, transform 0.25s ease',padding:'24px'}}>
+        <div style={{fontSize:'2.5rem'}}>{icon}</div>
+        <p style={{fontWeight:700,fontSize:'0.8rem',textTransform:'uppercase',letterSpacing:'0.12em',color:'#1a252f',textAlign:'center'}}>{titulo}</p>
+        <p style={{fontSize:'0.7rem',color:'#9ca3af',textAlign:'center'}}>{tagline}</p>
+      </div>
+      {/* Estado hover — descripción */}
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,display:'flex',
+        flexDirection:'column',justifyContent:'center',padding:'24px',
+        opacity:h?1:0,transform:h?'translateY(0)':'translateY(14px)',
+        transition:'opacity 0.28s ease 0.05s, transform 0.3s ease 0.05s'}}>
+        <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'10px'}}>
+          <span style={{fontSize:'1.2rem'}}>{icon}</span>
+          <p style={{fontWeight:700,fontSize:'0.75rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'white'}}>{titulo}</p>
+        </div>
+        <p style={{color:'rgba(255,255,255,0.85)',fontSize:'0.78rem',lineHeight:'1.65'}}>{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+// Tarjeta hover para Valores
+function ValorCard({icon,titulo,desc,delay=0}){
+  const[h,setH]=useState(false);
+  return(
+    <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
+      style={{height:'130px',position:'relative',overflow:'hidden',cursor:'default',borderRadius:'16px',
+        background:h?'#1a252f':'white',border:'1px solid',
+        borderColor:h?'transparent':'#f1f5f9',
+        boxShadow:h?'0 8px 24px rgba(0,0,0,0.18)':'0 1px 4px rgba(0,0,0,0.05)',
+        transition:'background 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease'}}>
+      {/* Estado normal */}
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,display:'flex',
+        alignItems:'center',justifyContent:'center',flexDirection:'column',gap:'8px',
+        opacity:h?0:1,transform:h?'translateY(-8px)':'translateY(0)',
+        transition:'opacity 0.18s ease, transform 0.22s ease'}}>
+        <span style={{fontSize:'1.8rem'}}>{icon}</span>
+        <p style={{fontWeight:700,fontSize:'0.72rem',textTransform:'uppercase',letterSpacing:'0.12em',color:'#1a252f'}}>{titulo}</p>
+      </div>
+      {/* Estado hover */}
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,padding:'16px 18px',
+        display:'flex',flexDirection:'column',justifyContent:'center',
+        opacity:h?1:0,transform:h?'translateY(0)':'translateY(10px)',
+        transition:'opacity 0.25s ease 0.06s, transform 0.28s ease 0.06s'}}>
+        <div style={{display:'flex',alignItems:'center',gap:'6px',marginBottom:'6px'}}>
+          <span style={{fontSize:'1rem'}}>{icon}</span>
+          <p style={{fontWeight:700,fontSize:'0.68rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#00b5b5'}}>{titulo}</p>
+        </div>
+        <p style={{color:'rgba(255,255,255,0.75)',fontSize:'0.73rem',lineHeight:'1.55'}}>{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+// Tarjeta hover para Política de Calidad
+function CalidadCard(){
+  const[h,setH]=useState(false);
+  return(
+    <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
+      style={{borderRadius:'16px',overflow:'hidden',border:'1px solid #f1f5f9',
+        boxShadow:h?'0 8px 24px rgba(0,0,0,0.1)':'0 1px 4px rgba(0,0,0,0.05)',
+        transition:'box-shadow 0.3s'}}>
+      <div style={{padding:'16px 24px',background:'linear-gradient(90deg,#1a252f,#2c3e50)',
+        display:'flex',alignItems:'center',gap:'8px',cursor:'default'}}>
+        <span style={{fontSize:'1.1rem'}}>✅</span>
+        <p style={{fontWeight:700,fontSize:'0.75rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'white'}}>Política de Calidad</p>
+        <span style={{marginLeft:'auto',fontSize:'0.7rem',color:'rgba(255,255,255,0.4)',fontStyle:'italic'}}>
+          {h?'':'pasa el mouse para leer →'}
+        </span>
+      </div>
+      <div style={{background:'white',padding:'0 24px',
+        maxHeight:h?'200px':'0px',opacity:h?1:0,
+        transition:'max-height 0.4s ease, opacity 0.3s ease, padding 0.3s ease',
+        paddingTop:h?'20px':0,paddingBottom:h?'20px':0,overflow:'hidden'}}>
+        <p style={{color:'#6b7280',fontSize:'0.82rem',lineHeight:'1.7'}}>
+          Somos una empresa con una profunda orientación de servicio al cliente y a la mejora continua. En SERTA Marketing Intelligence Partner, nuestros clientes encuentran profesionalismo y atención esmerada para comprender sus necesidades y traducirlas en proyectos efectivos y confiables que les proporcionen la información de mercado apropiada, entendible y oportuna para tomar las decisiones que más favorezcan sus estrategias comerciales y de mercado.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function InicioModule({user}){
   const valores=[
-    {icon:'🤝',titulo:'Confianza',desc:'Entendemos que nuestros clientes necesitan información precisa, útil y oportuna. Trabajamos con transparencia y compromiso, generando relaciones basadas en la confianza mutua.'},
-    {icon:'⚖️',titulo:'Integridad',desc:'Nos guiamos por la honestidad y la ética en cada decisión. Nuestro equipo está comprometido con la verdad y la transparencia, asegurando que cada análisis refleje la realidad del mercado.'},
-    {icon:'💡',titulo:'Innovación',desc:'Nos mantenemos a la vanguardia mediante la capacitación continua y el uso de herramientas tecnológicas de última generación, garantizando soluciones actualizadas y eficientes.'},
-    {icon:'🔒',titulo:'Confidencialidad',desc:'La información es un activo estratégico y su seguridad es nuestra prioridad. Operamos bajo un estricto código de ética que garantiza la protección y manejo responsable de los datos.'},
-    {icon:'🔗',titulo:'Sinergia',desc:'El talento individual es poderoso, pero cuando colaboramos logramos resultados extraordinarios. Fomentamos un entorno donde las habilidades de cada persona generan un impacto mayor.'},
-    {icon:'🌿',titulo:'Bienestar',desc:'Creemos en el equilibrio entre la vida profesional y personal. Promovemos un entorno de trabajo donde la salud, la felicidad y el desarrollo personal son esenciales para el éxito del equipo.'},
+    {icon:'🤝',titulo:'Confianza',desc:'Trabajamos con transparencia y compromiso, generando relaciones basadas en la confianza mutua y en información precisa y oportuna.'},
+    {icon:'⚖️',titulo:'Integridad',desc:'Nos guiamos por la honestidad y la ética en cada decisión, asegurando que cada análisis refleje fielmente la realidad del mercado.'},
+    {icon:'💡',titulo:'Innovación',desc:'Nos mantenemos a la vanguardia con capacitación continua y herramientas tecnológicas de última generación para soluciones eficientes.'},
+    {icon:'🔒',titulo:'Confidencialidad',desc:'La información es un activo estratégico. Operamos bajo un estricto código de ética que garantiza la protección de los datos de nuestros clientes.'},
+    {icon:'🔗',titulo:'Sinergia',desc:'Fomentamos un entorno donde las habilidades de cada persona se combinan para generar un impacto mayor en nuestros clientes y proyectos.'},
+    {icon:'🌿',titulo:'Bienestar',desc:'Promovemos el equilibrio entre vida profesional y personal — la salud y la felicidad del equipo son esenciales para nuestro éxito colectivo.'},
   ];
-  const h=new Date().getHours();
-  const sal=h<12?'Buenos días':h<18?'Buenas tardes':'Buenas noches';
+  const hr=new Date().getHours();
+  const sal=hr<12?'Buenos días':hr<18?'Buenas tardes':'Buenas noches';
   return(
     <div className="fade">
       {/* Hero */}
-      <div className="relative overflow-hidden" style={{background:'linear-gradient(135deg,#1a252f 0%,#2c3e50 55%,#3d5166 100%)',minHeight:'260px'}}>
-        {/* Decorative rings */}
-        <div style={{position:'absolute',top:'-60px',right:'-60px',width:'320px',height:'320px',borderRadius:'50%',border:'1.5px solid rgba(0,181,181,0.15)',pointerEvents:'none'}}/>
-        <div style={{position:'absolute',top:'-20px',right:'-20px',width:'220px',height:'220px',borderRadius:'50%',border:'1.5px solid rgba(0,181,181,0.1)',pointerEvents:'none'}}/>
-        <div style={{position:'absolute',bottom:'-40px',left:'30%',width:'180px',height:'180px',borderRadius:'50%',border:'1px solid rgba(0,181,181,0.08)',pointerEvents:'none'}}/>
+      <div className="relative overflow-hidden" style={{background:'linear-gradient(135deg,#1a252f 0%,#2c3e50 55%,#3d5166 100%)',minHeight:'240px'}}>
+        <div style={{position:'absolute',top:'-60px',right:'-60px',width:'320px',height:'320px',borderRadius:'50%',border:'1.5px solid rgba(0,181,181,0.12)',pointerEvents:'none'}}/>
+        <div style={{position:'absolute',top:'-10px',right:'-10px',width:'210px',height:'210px',borderRadius:'50%',border:'1px solid rgba(0,181,181,0.08)',pointerEvents:'none'}}/>
+        <div style={{position:'absolute',bottom:'-50px',left:'35%',width:'200px',height:'200px',borderRadius:'50%',border:'1px solid rgba(0,181,181,0.07)',pointerEvents:'none'}}/>
         <div className="relative px-8 py-10">
-          <p className="text-white/50 text-sm mb-1">{sal}, <span className="text-white font-semibold">{user.nombre.split(' ')[0]}</span></p>
-          <h1 className="text-white text-3xl font-bold leading-tight mb-2">Bienvenido a SERTA</h1>
-          <p className="text-white/40 text-sm max-w-lg leading-relaxed">Esta plataforma es nuestro espacio de trabajo interno. Aquí encontrarás todo lo que necesitas para gestionar proyectos, clientes, proveedores y más.</p>
-          <div className="mt-6 flex items-center gap-2">
-            <div className="h-0.5 w-10 rounded-full" style={{background:'#00b5b5'}}/>
-            <p className="text-xs font-semibold tracking-widest" style={{color:'#00b5b5'}}>INTELLIGENCE PARTNER</p>
+          <p style={{color:'rgba(255,255,255,0.45)',fontSize:'0.85rem',marginBottom:'4px'}}>{sal}, <span style={{color:'white',fontWeight:600}}>{user.nombre.split(' ')[0]}</span></p>
+          <h1 style={{color:'white',fontSize:'2rem',fontWeight:800,lineHeight:1.2,marginBottom:'8px'}}>Bienvenido a SERTA</h1>
+          <p style={{color:'rgba(255,255,255,0.35)',fontSize:'0.82rem',maxWidth:'420px',lineHeight:1.6}}>Tu plataforma de gestión interna · Pasa el mouse sobre las tarjetas para explorar.</p>
+          <div style={{marginTop:'20px',display:'flex',alignItems:'center',gap:'8px'}}>
+            <div style={{height:'2px',width:'36px',borderRadius:'2px',background:'#00b5b5'}}/>
+            <p style={{fontSize:'0.65rem',fontWeight:600,letterSpacing:'0.2em',color:'#00b5b5'}}>INTELLIGENCE PARTNER</p>
           </div>
         </div>
       </div>
 
-      <div className="p-6 space-y-8">
+      <div style={{padding:'24px',display:'flex',flexDirection:'column',gap:'24px'}}>
         {/* Misión · Visión · Filosofía */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Misión */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 flex items-center gap-2" style={{background:'linear-gradient(90deg,#1a252f,#2c3e50)'}}>
-              <span className="text-lg">🎯</span>
-              <h2 className="text-white font-bold text-sm uppercase tracking-wider">Nuestra Misión</h2>
-            </div>
-            <div className="px-5 py-4">
-              <p className="text-gray-600 text-sm leading-relaxed">En SERTA Marketing Intelligence Partner, ayudamos a las empresas a tomar decisiones estratégicas con inteligencia de mercados confiable y óptima. Integramos metodologías cualitativas y cuantitativas de vanguardia con tecnología avanzada para ofrecer soluciones perfectamente sustentadas.</p>
-            </div>
-          </div>
-          {/* Visión */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 flex items-center gap-2" style={{background:'linear-gradient(90deg,#00b5b5,#00c8c8)'}}>
-              <span className="text-lg">🔭</span>
-              <h2 className="text-white font-bold text-sm uppercase tracking-wider">Nuestra Visión</h2>
-            </div>
-            <div className="px-5 py-4">
-              <p className="text-gray-600 text-sm leading-relaxed">Ser empresa referencia en inteligencia de mercados en México y los países donde trabajemos, reconocida por la confiabilidad, innovación y valor estratégico. Consolidarnos como socio clave para la toma de decisiones, fortaleciendo una cultura organizacional que priorice el desarrollo y bienestar del equipo.</p>
-            </div>
-          </div>
-          {/* Filosofía */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 flex items-center gap-2" style={{background:'linear-gradient(90deg,#3d5166,#4a6177)'}}>
-              <span className="text-lg">💬</span>
-              <h2 className="text-white font-bold text-sm uppercase tracking-wider">Nuestra Filosofía</h2>
-            </div>
-            <div className="px-5 py-4">
-              <p className="text-gray-600 text-sm leading-relaxed">Somos una opción inteligente para empresas que buscan la más alta calidad. Combinamos experiencia, calidad, empatía y vanguardia tecnológica. En SERTA creemos en analizar a fondo para proponer soluciones claras. Profundizamos para que lo complejo se vuelva simple.</p>
-            </div>
+        <div>
+          <p style={{fontSize:'0.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.15em',color:'#9ca3af',marginBottom:'14px'}}>Nuestra identidad · pasa el mouse para leer</p>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:'16px'}}>
+            <PillarCard icon="🎯" titulo="Nuestra Misión" tagline="Por qué existimos"
+              accentBg="linear-gradient(135deg,#1a252f,#2c3e50)"
+              desc="Ayudamos a las empresas a tomar decisiones estratégicas con inteligencia de mercados confiable y óptima. Integramos metodologías de vanguardia con tecnología avanzada para ofrecer soluciones perfectamente sustentadas."/>
+            <PillarCard icon="🔭" titulo="Nuestra Visión" tagline="A dónde vamos"
+              accentBg="linear-gradient(135deg,#007f7f,#00b5b5)"
+              desc="Ser empresa referencia en inteligencia de mercados en México y los países donde trabajemos, reconocida por la confiabilidad, innovación y valor estratégico de nuestras soluciones para la toma de decisiones."/>
+            <PillarCard icon="💬" titulo="Nuestra Filosofía" tagline="Cómo lo hacemos"
+              accentBg="linear-gradient(135deg,#3d5166,#4a6177)"
+              desc="Somos una opción inteligente. Combinamos experiencia, calidad y empatía. Creemos en analizar a fondo para proponer soluciones claras y fáciles de entender. Profundizamos para que lo complejo se vuelva simple."/>
           </div>
         </div>
 
         {/* Valores */}
         <div>
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-1 h-6 rounded-full" style={{background:'#00b5b5'}}/>
-            <h2 className="text-lg font-bold text-gray-800">Nuestros Valores</h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {valores.map((v,i)=>(
-              <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 card-hover flex gap-4">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0" style={{background:'rgba(0,181,181,0.1)'}}>
-                  {v.icon}
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-800 text-sm uppercase tracking-wide mb-1" style={{color:'#1a252f'}}>{v.titulo}</h3>
-                  <p className="text-gray-500 text-xs leading-relaxed">{v.desc}</p>
-                </div>
-              </div>
-            ))}
+          <p style={{fontSize:'0.7rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.15em',color:'#9ca3af',marginBottom:'14px'}}>Nuestros valores · pasa el mouse para conocerlos</p>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:'12px'}}>
+            {valores.map((v,i)=><ValorCard key={i} {...v}/>)}
           </div>
         </div>
 
-        {/* Políticas de Calidad */}
-        <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-          <div className="px-6 py-3 flex items-center gap-2" style={{background:'linear-gradient(90deg,#1a252f,#2c3e50)'}}>
-            <span className="text-lg">✅</span>
-            <h2 className="text-white font-bold text-sm uppercase tracking-wider">Política de Calidad</h2>
-          </div>
-          <div className="bg-white px-6 py-5">
-            <p className="text-gray-600 text-sm leading-relaxed max-w-4xl">Somos una empresa con una profunda orientación de servicio al cliente y a la mejora continua. En SERTA Marketing Intelligence Partner, nuestros clientes encuentran profesionalismo y atención esmerada para comprender sus necesidades y traducirlas en proyectos efectivos y confiables que les proporcionen la información de mercado apropiada, entendible y oportuna para tomar las decisiones que más favorezcan sus estrategias comerciales y de mercado.</p>
-          </div>
-        </div>
+        {/* Política de Calidad */}
+        <CalidadCard/>
 
-        {/* Footer */}
-        <p className="text-center text-xs text-gray-300 pb-2">© {new Date().getFullYear()} SERTA de México · Confidencial · Uso interno</p>
+        <p style={{textAlign:'center',fontSize:'0.7rem',color:'#d1d5db',paddingBottom:'8px'}}>© {new Date().getFullYear()} SERTA de México · Confidencial · Uso interno</p>
       </div>
     </div>
   );
