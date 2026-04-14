@@ -141,6 +141,7 @@ const MODS=[
   {id:'clientes',label:'Clientes',icon:'🤝',perm:'perm_clientes'},
   {id:'ventas',label:'Ventas/CRM',icon:'💼',perm:'perm_ventas'},
   {id:'proyectos',label:'Proyectos',icon:'🏗️',perm:'perm_proyectos'},
+  {id:'requisiciones',label:'Requisiciones',icon:'📋',perm:'perm_requisiciones'},
   {id:'comisiones',label:'Comisiones',icon:'💲',perm:'perm_ventas'},
   {id:'finanzas',label:'Finanzas',icon:'💰',perm:'perm_finanzas'},
   {id:'calidad',label:'Calidad',icon:'✅',perm:'perm_calidad'},
@@ -1129,7 +1130,7 @@ function ProveedoresModule({user}){
         <Modal title="Detalle del proveedor" onClose={()=>setModal(null)} size="lg">
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[['🏢 Nombre',sel.nombre],['📋 Razón social',sel.razon_social||'—'],['🔢 RFC',sel.rfc||'—'],['📧 Email',sel.email||'—'],['📞 Teléfono',sel.telefono||'—'],['📍 Dirección',sel.direccion||'—'],['🏙️ Ciudad',sel.ciudad||'—'],['🗺️ Estado',sel.estado||'—'],['📮 C.P.',sel.cp||'—'],['🏷️ Actividad',sel.categoria||'—'],['⭐ Calificación',sel.calificacion?estrellas(sel.calificacion):'—']].map(([k,v])=>(
+              {[['🏢 Nombre',sel.nombre],['📋 Razón social',sel.razon_social||'—'],['🔢 RFC',sel.rfc||'—'],['📧 Email',sel.email||'—'],['📞 Teléfono',sel.telefono||'—'],['📍 Dirección',sel.direccion||'—'],['🏙️ Ciudad',sel.ciudad||'—'],['🗺️ Estado',sel.estado||'—'],['📮 C.P.',sel.cp||'—'],['🏷️ Actividad',sel.categoria||'—'],['🧾 Régimen',sel.regimen_fiscal||'—'],['⭐ Calificación',sel.calificacion?estrellas(sel.calificacion):'—']].map(([k,v])=>(
                 <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
               ))}
             </div>
@@ -1213,6 +1214,11 @@ function ProveedoresModule({user}){
               <Input label="Estado" value={form.estado} onChange={v=>setForm(f=>({...f,estado:v}))}/>
               <Input label="C.P." value={form.cp} onChange={v=>setForm(f=>({...f,cp:v}))}/>
               <Sel label="Calificación" value={String(form.calificacion||3)} onChange={v=>setForm(f=>({...f,calificacion:parseInt(v)}))} options={[1,2,3,4,5].map(n=>({value:String(n),label:'★'.repeat(n)+'☆'.repeat(5-n)}))}/>
+            </div>
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Régimen fiscal (para retenciones)</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <Sel label="Tipo de persona" value={form.tipo_persona||'moral'} onChange={v=>setForm(f=>({...f,tipo_persona:v}))} options={[{value:'moral',label:'Persona Moral'},{value:'fisica',label:'Persona Física'}]}/>
+              <Sel label="Régimen fiscal" value={form.regimen_fiscal||'moral'} onChange={v=>setForm(f=>({...f,regimen_fiscal:v}))} options={form.tipo_persona==='fisica'?[{value:'fisica_honorarios',label:'Servicios Profesionales / Honorarios'},{value:'fisica_arrendamiento',label:'Arrendamiento'},{value:'fisica_actividad_emp',label:'Actividad Empresarial'},{value:'resico',label:'RESICO'},{value:'sin_obligaciones',label:'Sin obligaciones fiscales'}]:[{value:'moral',label:'Persona Moral'},{value:'sin_obligaciones',label:'Sin obligaciones / Público General'},{value:'extranjero',label:'Extranjero'}]}/>
             </div>
             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Datos bancarios (opcional)</p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -2248,14 +2254,14 @@ function ComisionesModule({user}){
     const[{data:cfgData},{data:proy},{data:usu},{data:com}]=await Promise.all([
       sb.from('config_comisiones').select('clave,valor'),
       sb.from('proyectos').select('id,numero_proyecto,nombre,empresa,status,importe,flag_renovacion,flag_prospectado,flag_cliente_nuevo,flag_sindicado').in('status',['Cerrado','Activo']).order('numero_proyecto',{ascending:false}),
-      sb.from('usuarios').select('id,nombre,rol').eq('activo',true).order('nombre'),
+      sb.from('empleados').select('id,nombre,rol').eq('activo',true).order('nombre'),
       sb.from('comisiones').select(`
         id,proyecto_id,vendedor_id,empresa,anio_fiscal,mes_cierre,fecha_cierre,
         monto_cerrado,comision_conecta,costos_directos,
         flag_renovacion,flag_prospectado,flag_cliente_nuevo,flag_sindicado,
         monto_serta,comision_pm_max,msd_antes_cv,pct_com_ventas,
         com_ventas_max,excedente,com_final_pm,com_final_ventas,msd_final,
-        notas,status,proyectos(nombre,numero_proyecto),usuarios(nombre)
+        notas,status,proyectos(nombre,numero_proyecto),empleados(nombre)
       `).order('created_at',{ascending:false})
     ]);
     const cfgMap={};(cfgData||[]).forEach(r=>{cfgMap[r.clave]=r.valor;});
@@ -2462,7 +2468,7 @@ function ComisionesModule({user}){
                     <p className="font-medium text-gray-800">{r.proyectos?.nombre||'—'}</p>
                     <p className="text-xs text-gray-400">{r.proyectos?.numero_proyecto}</p>
                   </td>
-                  {canSeeAll&&<td className="px-4 py-3 text-gray-600 text-xs">{r.usuarios?.nombre||'—'}</td>}
+                  {canSeeAll&&<td className="px-4 py-3 text-gray-600 text-xs">{r.empleados?.nombre||'—'}</td>}
                   <td className="px-3 py-3 text-center"><Badge text={r.empresa} color={r.empresa==='SERTA'?'blue':'purple'}/></td>
                   <td className="px-3 py-3 text-center text-xs text-gray-600">{r.mes_cierre?MESES[r.mes_cierre-1]:''} {r.anio_fiscal}</td>
                   <td className="px-4 py-3 text-right text-gray-700 font-mono text-xs">{fmt(r.monto_cerrado)}</td>
@@ -2591,7 +2597,7 @@ function ComisionesModule({user}){
           <div className="space-y-4">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
               <div><p className="text-xs text-gray-500">Proyecto</p><p className="font-medium">{selRow.proyectos?.nombre}</p><p className="text-xs text-gray-400">{selRow.proyectos?.numero_proyecto}</p></div>
-              <div><p className="text-xs text-gray-500">Vendedor</p><p className="font-medium">{selRow.usuarios?.nombre||'—'}</p></div>
+              <div><p className="text-xs text-gray-500">Vendedor</p><p className="font-medium">{selRow.empleados?.nombre||'—'}</p></div>
               <div><p className="text-xs text-gray-500">Empresa</p><Badge text={selRow.empresa} color={selRow.empresa==='SERTA'?'blue':'purple'}/></div>
               <div><p className="text-xs text-gray-500">Mes / Año</p><p className="font-medium">{selRow.mes_cierre?MESES[selRow.mes_cierre-1]:''} {selRow.anio_fiscal}</p></div>
               <div><p className="text-xs text-gray-500">Fecha cierre</p><p className="font-medium">{fmtD(selRow.fecha_cierre)}</p></div>
@@ -2655,6 +2661,582 @@ function ComisionesModule({user}){
   );
 }
 
+// ══════════════════════════════════════════════════════════════
+// MÓDULO REQUISICIONES DE PAGO
+// ══════════════════════════════════════════════════════════════
+
+const REGIMENES={
+  moral:            {label:'Persona Moral',          iva:true, ret_iva:true,  isr:false},
+  fisica_honorarios:{label:'Honorarios/Serv. Prof.',  iva:true, ret_iva:true,  isr:true},
+  fisica_arrendamiento:{label:'Arrendamiento',        iva:true, ret_iva:true,  isr:true},
+  fisica_actividad_emp:{label:'Act. Empresarial',     iva:true, ret_iva:true,  isr:true},
+  resico:           {label:'RESICO',                  iva:true, ret_iva:false, isr:false},
+  sin_obligaciones: {label:'Sin obligaciones',        iva:false,ret_iva:false, isr:false},
+  extranjero:       {label:'Extranjero',              iva:false,ret_iva:false, isr:false},
+};
+
+function calcImpuestos(subtotal, regimen){
+  const r=REGIMENES[regimen]||REGIMENES['moral'];
+  const iva      = r.iva      ? subtotal*0.16 : 0;
+  const ret_iva  = r.ret_iva  ? (iva/3)*2     : 0;
+  const ret_isr  = r.isr      ? subtotal*0.10 : 0;
+  const total    = subtotal + iva - ret_iva - ret_isr;
+  return{iva, ret_iva, ret_isr, total};
+}
+
+const REQ_STATUS_COLOR={Borrador:'gray',Enviada:'blue',Autorizada:'green','Pago en proceso':'orange',Pagada:'purple',Cancelada:'red'};
+const AREAS_OPT=['Calidad en el trabajo entregado','Precio adecuado','Disponibilidad y posibilidad de contactarlo','Puntualidad en entrega'];
+
+function RequisicionesModule({user}){
+  const isAdmin   = user.rol==='Administrador';
+  const canAll    = isAdmin||user.perm_contabilidad||user.perm_finanzas;
+  const canAprobar= isAdmin||user.perm_aprobar_req||user.perm_autorizar_proyectos;
+  const canCreate = isAdmin||user.perm_requisiciones||user.perm_proyectos;
+
+  const[rows,setRows]      =useState([]);
+  const[proyectos,setProyectos]=useState([]);
+  const[proveedores,setProveedores]=useState([]);
+  const[directores,setDirectores]=useState([]);
+  const[actividades,setActividades]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[modal,setModal]    =useState(null);
+  const[sel,setSel]        =useState(null);
+  const[saving,setSaving]  =useState(false);
+  const[msg,setMsg]        =useState('');
+  const[tab,setTab]        =useState('mis');   // 'mis'|'autorizar'|'todas'
+  const[search,setSearch]  =useState('');
+  const[cancelNota,setCancelNota]=useState('');
+  const[evalForm,setEvalForm]=useState({score:8,areas:[],otro:''});
+
+  // Form nueva requisición
+  const initForm=()=>({
+    proyecto_id:'',proveedor_id:'',director_id:'',tipo:'Normal',
+    descripcion:'',observaciones:'',
+    items:[{actividad:'',cantidad:1,precio_unitario:'',total:0}],
+    subtotal:0,iva:0,ret_iva:0,ret_isr:0,total_pago:0,
+    regimen:'moral',
+  });
+  const[form,setForm]=useState(initForm());
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const[{data:reqs},{data:proy},{data:provs},{data:dirs},{data:acts}]=await Promise.all([
+      sb.from('requisiciones').select(`
+        id,numero_requisicion,proyecto_id,proveedor_id,director_id,creado_por,tipo,
+        descripcion,observaciones,subtotal,iva,ret_iva,ret_isr,total_pago,status,
+        fecha_envio,fecha_autorizacion,fecha_pago,motivo_cancelacion,
+        eval_score,eval_areas,eval_otro,eval_fecha,created_at,
+        proyectos(id,nombre,numero_proyecto,cliente:clientes(nombre)),
+        proveedores(id,nombre,email,regimen_fiscal),
+        director:empleados!requisiciones_director_id_fkey(id,nombre),
+        creador:empleados!requisiciones_creado_por_fkey(id,nombre)
+      `).order('created_at',{ascending:false}),
+      sb.from('proyectos').select('id,numero_proyecto,nombre,empresa').in('status',['Activo','Cerrado','Prospecto']).order('numero_proyecto',{ascending:false}),
+      sb.from('proveedores').select('id,nombre,email,regimen_fiscal,tipo_persona').eq('activo',true).order('nombre'),
+      sb.from('empleados').select('id,nombre,rol').eq('activo',true).order('nombre'),
+      sb.from('actividades_proveedor').select('nombre').eq('activo',true).order('orden'),
+    ]);
+    const all=reqs||[];
+    setRows(canAll?all:all.filter(r=>r.creado_por===user.id));
+    setProyectos(proy||[]);
+    setProveedores(provs||[]);
+    setDirectores((dirs||[]).filter(d=>d.rol==='Administrador'||d.rol==='Director'));
+    setActividades((acts||[]).map(a=>a.nombre));
+    setLoading(false);
+  },[canAll,user.id]);
+
+  useEffect(()=>{load();},[load]);
+
+  // Tabs
+  const misReqs     = rows.filter(r=>r.creado_por===user.id);
+  const porAutorizar= rows.filter(r=>r.director_id===user.id&&r.status==='Enviada');
+  const filtered    = useMemo(()=>{
+    const base=tab==='mis'?misReqs:tab==='autorizar'?porAutorizar:rows;
+    if(!search)return base;
+    const q=search.toLowerCase();
+    return base.filter(r=>(r.proyectos?.nombre||'').toLowerCase().includes(q)||String(r.numero_requisicion).includes(q)||(r.proveedores?.nombre||'').toLowerCase().includes(q));
+  },[tab,rows,misReqs,porAutorizar,search]);
+
+  // Recalcular impuestos al cambiar items o proveedor
+  const recalcItems=(items,regimen)=>{
+    const subtotal=items.reduce((s,i)=>s+(parseFloat(i.total)||0),0);
+    const imp=calcImpuestos(subtotal,regimen);
+    return{...imp,subtotal};
+  };
+
+  const setItem=(idx,field,val)=>{
+    setForm(f=>{
+      const items=[...f.items];
+      items[idx]={...items[idx],[field]:val};
+      if(field==='cantidad'||field==='precio_unitario'){
+        const c=parseFloat(field==='cantidad'?val:items[idx].cantidad)||0;
+        const p=parseFloat(field==='precio_unitario'?val:items[idx].precio_unitario)||0;
+        items[idx].total=c*p;
+      }
+      const calc=recalcItems(items,f.regimen);
+      return{...f,items,...calc};
+    });
+  };
+
+  const addItem=()=>setForm(f=>({...f,items:[...f.items,{actividad:'',cantidad:1,precio_unitario:'',total:0}]}));
+  const removeItem=idx=>setForm(f=>{
+    const items=f.items.filter((_,i)=>i!==idx);
+    const calc=recalcItems(items,f.regimen);
+    return{...f,items,...calc};
+  });
+
+  const onProveedorChange=pid=>{
+    const p=proveedores.find(x=>String(x.id)===pid);
+    const reg=p?.regimen_fiscal||'moral';
+    setForm(f=>{
+      const calc=recalcItems(f.items,reg);
+      return{...f,proveedor_id:pid,regimen:reg,...calc};
+    });
+  };
+
+  // Guardar
+  const save=async(statusFinal)=>{
+    setSaving(true);setMsg('');
+    try{
+      const rid=await sb.rpc('fn_crear_requisicion',{
+        p_proyecto_id:form.proyecto_id?parseInt(form.proyecto_id):null,
+        p_proveedor_id:form.proveedor_id?parseInt(form.proveedor_id):null,
+        p_director_id:form.director_id?parseInt(form.director_id):null,
+        p_creado_por:user.id,
+        p_tipo:form.tipo,
+        p_descripcion:form.descripcion,
+        p_observaciones:form.observaciones,
+        p_subtotal:form.subtotal,
+        p_iva:form.iva,
+        p_ret_iva:form.ret_iva,
+        p_ret_isr:form.ret_isr,
+        p_total_pago:form.total_pago,
+        p_status:statusFinal,
+      });
+      if(rid.error)throw rid.error;
+      const reqId=rid.data;
+      // Guardar partidas
+      if(form.items.length){
+        const items=form.items.filter(i=>i.actividad).map((i,idx)=>({
+          requisicion_id:reqId,actividad_nombre:i.actividad,
+          cantidad:parseFloat(i.cantidad)||1,
+          precio_unitario:parseFloat(i.precio_unitario)||0,
+          total:parseFloat(i.total)||0,orden:idx,
+        }));
+        if(items.length)await sb.from('req_items').insert(items);
+      }
+      setMsg(statusFinal==='Enviada'?'✅ Requisición enviada para autorización':'✅ Guardada como borrador');
+      await load();
+      setTimeout(()=>{setModal(null);setMsg('');},1000);
+    }catch(e){setMsg('❌ '+e.message);}
+    setSaving(false);
+  };
+
+  const cambiarStatus=async(r,status,extra={})=>{
+    const{error}=await sb.rpc('fn_status_requisicion',{
+      p_id:r.id,p_status:status,p_actor_id:user.id,p_motivo:extra.motivo||''
+    });
+    if(error){alert('Error: '+error.message);return;}
+    await load();setSel(null);setModal(null);setCancelNota('');
+  };
+
+  const guardarEval=async()=>{
+    setSaving(true);
+    const{error}=await sb.rpc('fn_evaluar_proveedor_req',{
+      p_id:sel.id,p_score:evalForm.score,
+      p_areas:evalForm.areas,p_otro:evalForm.otro||''
+    });
+    if(!error){await load();setModal(null);}
+    setSaving(false);
+  };
+
+  // Email mailto
+  const sendEmail=r=>{
+    const prov=r.proveedores||{};
+    const proy=r.proyectos||{};
+    const subject=encodeURIComponent(`Requisición de pago #${r.numero_requisicion} - ${proy.nombre||''}`);
+    const body=encodeURIComponent(
+`Estimado proveedor ${prov.nombre||''},
+
+Le informamos que la requisición de pago #${r.numero_requisicion} ha sido autorizada.
+
+Para proceder con el pago, favor de emitir su factura con los siguientes datos:
+
+  Proyecto: ${proy.nombre||''} (${proy.numero_proyecto||''})
+  Concepto: ${r.descripcion||''}
+  Monto neto: ${fmt(r.subtotal)}
+  IVA (16%): ${fmt(r.iva)}
+  Total factura: ${fmt(r.subtotal+(r.iva||0))}
+
+Retenciones que se aplicarán al pago:
+  Retención IVA: ${fmt(r.ret_iva)}
+  Retención ISR: ${fmt(r.ret_isr)}
+  IMPORTE DE PAGO: ${fmt(r.total_pago)}
+
+Por favor envíe su CFDI a: ${user.email||'contabilidad@serta.com.mx'}
+
+Cualquier duda, no dude en contactarnos.
+
+Saludos,
+${user.nombre}
+SERTA de México`
+    );
+    window.open(`mailto:${prov.email||''}?subject=${subject}&body=${body}`);
+  };
+
+  const openView=async r=>{
+    setSel(r);
+    const{data:items}=await sb.from('req_items').select('*').eq('requisicion_id',r.id).order('orden');
+    setSel({...r,items:items||[]});
+    setEvalForm({score:r.eval_score||8,areas:r.eval_areas||[],otro:r.eval_otro||''});
+    setModal('ver');
+  };
+
+  if(loading)return<div className="p-8"><Spin/></div>;
+
+  return(
+    <div className="p-6 max-w-full fade">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">📋 Requisiciones de Pago</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Gestión de pagos a proveedores</p>
+        </div>
+        {canCreate&&<Btn onClick={()=>{setForm(initForm());setMsg('');setModal('nuevo');}}>+ Nueva requisición</Btn>}
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        {[
+          ['Mis requisiciones',misReqs.length,'📄','blue'],
+          ['Por autorizar',porAutorizar.length,'⏳','orange'],
+          ['Autorizadas',rows.filter(r=>r.status==='Autorizada').length,'✅','green'],
+          ['Pagadas',rows.filter(r=>r.status==='Pagada').length,'💸','purple'],
+        ].map(([t,v,ic,c])=><StatCard key={t} title={t} value={v} icon={ic} color={c}/>)}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 mb-4 border-b border-gray-200">
+        {[['mis','Mis requisiciones'],canAprobar&&['autorizar',`Por autorizar${porAutorizar.length?` (${porAutorizar.length})`:''}` ],canAll&&['todas','Todas']].filter(Boolean).map(([id,label])=>(
+          <button key={id} onClick={()=>setTab(id)} className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${tab===id?'border-blue-500 text-blue-600':'border-transparent text-gray-500 hover:text-gray-700'}`}>{label}</button>
+        ))}
+      </div>
+
+      {/* Búsqueda */}
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar por folio, proyecto o proveedor..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 mb-4"/>
+
+      {/* Tabla */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">No. Req.</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Proyecto</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Proveedor</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase hidden md:table-cell">Tipo</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase hidden lg:table-cell">Director</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Importe pago</th>
+                <th className="px-3 py-3 text-center text-xs font-semibold text-gray-500 uppercase">Status</th>
+                <th className="px-3 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filtered.length===0&&<tr><td colSpan="8"><Empty msg="Sin requisiciones con estos filtros"/></td></tr>}
+              {filtered.map(r=>(
+                <tr key={r.id} className="hover:bg-gray-50/70 transition">
+                  <td className="px-4 py-3 font-mono text-gray-700 font-medium">#{r.numero_requisicion}</td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-gray-800">{r.proyectos?.nombre||'—'}</p>
+                    <p className="text-xs text-gray-400">{r.proyectos?.cliente?.nombre||''}</p>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">{r.proveedores?.nombre||'—'}</td>
+                  <td className="px-3 py-3 text-center hidden md:table-cell"><Badge text={r.tipo} color={r.tipo==='Viáticos'?'orange':r.tipo==='Anticipos'?'purple':'blue'}/></td>
+                  <td className="px-3 py-3 text-center text-xs text-gray-500 hidden lg:table-cell">{r.director?.nombre||'—'}</td>
+                  <td className="px-4 py-3 text-right font-mono font-bold text-gray-800">{fmt(r.total_pago)}</td>
+                  <td className="px-3 py-3 text-center"><Badge text={r.status} color={REQ_STATUS_COLOR[r.status]||'gray'}/></td>
+                  <td className="px-3 py-3">
+                    <div className="flex gap-1">
+                      <button onClick={()=>openView(r)} className="text-xs text-gray-400 hover:text-blue-600 px-2 py-1 rounded hover:bg-blue-50 transition">Ver</button>
+                      {canAprobar&&r.status==='Enviada'&&r.director_id===user.id&&(
+                        <button onClick={()=>{setSel(r);setModal('autorizar');}} className="text-xs text-green-600 hover:text-green-700 px-2 py-1 rounded hover:bg-green-50 transition font-medium">Autorizar</button>
+                      )}
+                      {(canAll||user.perm_finanzas)&&(r.status==='Autorizada'||r.status==='Pago en proceso')&&(
+                        <button onClick={()=>{setSel(r);setModal('pago');}} className="text-xs text-purple-600 hover:text-purple-700 px-2 py-1 rounded hover:bg-purple-50 transition font-medium">Pago</button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── MODAL NUEVA REQUISICIÓN ─────────────────────────────── */}
+      {modal==='nuevo'&&(
+        <Modal title="Nueva requisición de pago" onClose={()=>setModal(null)} size="xl">
+          <div className="space-y-5">
+            {/* Datos generales */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Proyecto <span className="text-red-500">*</span></label>
+                <select value={form.proyecto_id} onChange={e=>setForm(f=>({...f,proyecto_id:e.target.value}))} required className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-200">
+                  <option value="">— Seleccionar proyecto —</option>
+                  {proyectos.map(p=><option key={p.id} value={p.id}>#{p.numero_proyecto} · {p.nombre}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Proveedor <span className="text-red-500">*</span></label>
+                <select value={form.proveedor_id} onChange={e=>onProveedorChange(e.target.value)} required className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-200">
+                  <option value="">— Seleccionar proveedor —</option>
+                  {proveedores.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
+                </select>
+                {form.proveedor_id&&<p className="text-xs text-blue-600 mt-0.5">Régimen: {REGIMENES[form.regimen]?.label||form.regimen}</p>}
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Director que autoriza <span className="text-red-500">*</span></label>
+                <select value={form.director_id} onChange={e=>setForm(f=>({...f,director_id:e.target.value}))} required className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-200">
+                  <option value="">— Seleccionar director —</option>
+                  {directores.map(d=><option key={d.id} value={d.id}>{d.nombre}</option>)}
+                </select>
+              </div>
+              <Sel label="Tipo de requisición" value={form.tipo} onChange={v=>setForm(f=>({...f,tipo:v}))} options={['Normal','Viáticos','Anticipos'].map(x=>({value:x,label:x}))}/>
+            </div>
+            <Input label="Descripción" value={form.descripcion} onChange={v=>setForm(f=>({...f,descripcion:v}))} required placeholder="Concepto general de la requisición"/>
+            <Textarea label="Observaciones" value={form.observaciones} onChange={v=>setForm(f=>({...f,observaciones:v}))} placeholder="Notas adicionales..."/>
+
+            {/* Partidas */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-gray-600 uppercase">Partidas / Conceptos</p>
+                <Btn size="sm" onClick={addItem}>+ Agregar línea</Btn>
+              </div>
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs text-gray-500 font-medium">Actividad / Concepto</th>
+                      <th className="px-3 py-2 text-center text-xs text-gray-500 font-medium w-20">Cantidad</th>
+                      <th className="px-3 py-2 text-right text-xs text-gray-500 font-medium w-32">Precio unit.</th>
+                      <th className="px-3 py-2 text-right text-xs text-gray-500 font-medium w-32">Total</th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {form.items.map((item,idx)=>(
+                      <tr key={idx}>
+                        <td className="px-2 py-1.5">
+                          <select value={item.actividad} onChange={e=>setItem(idx,'actividad',e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:ring-2 focus:ring-blue-200">
+                            <option value="">— Seleccionar —</option>
+                            {actividades.map(a=><option key={a} value={a}>{a}</option>)}
+                            <option value="Otro">Otro</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-1.5"><input type="number" min="0" step="0.01" value={item.cantidad} onChange={e=>setItem(idx,'cantidad',e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center focus:ring-2 focus:ring-blue-200"/></td>
+                        <td className="px-2 py-1.5"><input type="number" min="0" step="0.01" value={item.precio_unitario} onChange={e=>setItem(idx,'precio_unitario',e.target.value)} placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:ring-2 focus:ring-blue-200"/></td>
+                        <td className="px-3 py-1.5 text-right font-mono text-gray-700">{fmt(item.total)}</td>
+                        <td className="px-1"><button onClick={()=>removeItem(idx)} className="text-red-400 hover:text-red-600 text-lg leading-none">×</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Resumen fiscal */}
+            {form.subtotal>0&&(
+              <div className="bg-gray-50 rounded-xl p-4">
+                <p className="text-xs font-semibold text-gray-600 uppercase mb-3">Resumen de pago — {REGIMENES[form.regimen]?.label}</p>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-600">Subtotal</span><span className="font-mono">{fmt(form.subtotal)}</span></div>
+                  {form.iva>0&&<div className="flex justify-between text-gray-600"><span>(+) IVA 16%</span><span className="font-mono">+{fmt(form.iva)}</span></div>}
+                  {form.ret_iva>0&&<div className="flex justify-between text-red-600"><span>(−) Retención IVA</span><span className="font-mono">−{fmt(form.ret_iva)}</span></div>}
+                  {form.ret_isr>0&&<div className="flex justify-between text-red-600"><span>(−) Retención ISR 10%</span><span className="font-mono">−{fmt(form.ret_isr)}</span></div>}
+                  <div className="flex justify-between font-bold text-gray-800 text-base pt-2 border-t border-gray-200">
+                    <span>IMPORTE DE PAGO</span><span className="font-mono text-green-700">{fmt(form.total_pago)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {msg&&<p className="text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+            <div className="flex justify-end gap-2">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn color="outline" disabled={saving||!form.proyecto_id||!form.proveedor_id} onClick={()=>save('Borrador')}>Guardar borrador</Btn>
+              <Btn color="green" disabled={saving||!form.proyecto_id||!form.proveedor_id||!form.director_id} onClick={()=>save('Enviada')}>
+                {saving?'Enviando...':'📤 Enviar para autorización'}
+              </Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── MODAL VER DETALLE ──────────────────────────────────── */}
+      {modal==='ver'&&sel&&(
+        <Modal title={`Requisición #${sel.numero_requisicion}`} onClose={()=>setModal(null)} size="xl">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <Badge text={sel.status} color={REQ_STATUS_COLOR[sel.status]||'gray'}/>
+              <Badge text={sel.tipo} color={sel.tipo==='Viáticos'?'orange':sel.tipo==='Anticipos'?'purple':'blue'}/>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div><p className="text-xs text-gray-500">Proyecto</p><p className="font-medium">{sel.proyectos?.nombre||'—'}</p><p className="text-xs text-gray-400">#{sel.proyectos?.numero_proyecto}</p></div>
+              <div><p className="text-xs text-gray-500">Cliente</p><p className="font-medium">{sel.proyectos?.cliente?.nombre||'—'}</p></div>
+              <div><p className="text-xs text-gray-500">Proveedor</p><p className="font-medium">{sel.proveedores?.nombre||'—'}</p><p className="text-xs text-gray-400">{REGIMENES[sel.proveedores?.regimen_fiscal]?.label||''}</p></div>
+              <div><p className="text-xs text-gray-500">Director autorizador</p><p className="font-medium">{sel.director?.nombre||'—'}</p></div>
+              <div><p className="text-xs text-gray-500">Registrado por</p><p className="font-medium">{sel.creador?.nombre||'—'}</p></div>
+              <div><p className="text-xs text-gray-500">Fecha</p><p className="font-medium">{fmtD(sel.created_at?.split('T')[0])}</p></div>
+            </div>
+            {sel.descripcion&&<div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-1">Descripción</p><p className="text-sm">{sel.descripcion}</p></div>}
+            {sel.observaciones&&<div className="bg-yellow-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-1">Observaciones</p><p className="text-sm">{sel.observaciones}</p></div>}
+
+            {/* Partidas */}
+            {sel.items&&sel.items.length>0&&(
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50"><tr>
+                    <th className="px-3 py-2 text-left text-xs text-gray-500">Concepto</th>
+                    <th className="px-3 py-2 text-center text-xs text-gray-500">Cant.</th>
+                    <th className="px-3 py-2 text-right text-xs text-gray-500">P. Unit.</th>
+                    <th className="px-3 py-2 text-right text-xs text-gray-500">Total</th>
+                  </tr></thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {sel.items.map(i=><tr key={i.id}>
+                      <td className="px-3 py-2">{i.actividad_nombre}</td>
+                      <td className="px-3 py-2 text-center">{i.cantidad}</td>
+                      <td className="px-3 py-2 text-right font-mono">{fmt(i.precio_unitario)}</td>
+                      <td className="px-3 py-2 text-right font-mono font-medium">{fmt(i.total)}</td>
+                    </tr>)}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Resumen fiscal */}
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="space-y-1.5 text-sm">
+                <div className="flex justify-between"><span className="text-gray-600">Subtotal</span><span className="font-mono">{fmt(sel.subtotal)}</span></div>
+                {(sel.iva||0)>0&&<div className="flex justify-between text-gray-600"><span>(+) IVA 16%</span><span className="font-mono">+{fmt(sel.iva)}</span></div>}
+                {(sel.ret_iva||0)>0&&<div className="flex justify-between text-red-600"><span>(−) Retención IVA</span><span className="font-mono">−{fmt(sel.ret_iva)}</span></div>}
+                {(sel.ret_isr||0)>0&&<div className="flex justify-between text-red-600"><span>(−) Retención ISR 10%</span><span className="font-mono">−{fmt(sel.ret_isr)}</span></div>}
+                <div className="flex justify-between font-bold text-gray-800 text-base pt-2 border-t border-gray-200">
+                  <span>IMPORTE DE PAGO</span><span className="font-mono text-green-700">{fmt(sel.total_pago)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Evaluación */}
+            {sel.tipo==='Normal'&&(
+              <div className="bg-blue-50 rounded-xl p-4">
+                <p className="text-xs font-semibold text-blue-700 uppercase mb-3">Evaluación del proveedor</p>
+                {sel.eval_score!=null?(
+                  <div>
+                    <p className="text-sm mb-2">Probabilidad de volver a usar: <span className="font-bold text-blue-700 text-lg">{sel.eval_score}/10</span></p>
+                    {sel.eval_areas?.length>0&&<div className="flex flex-wrap gap-2 mt-1">{sel.eval_areas.map(a=><Badge key={a} text={a} color="blue"/>)}</div>}
+                    {sel.eval_otro&&<p className="text-xs text-gray-500 mt-2">Otro: {sel.eval_otro}</p>}
+                  </div>
+                ):(sel.status==='Pagada'&&(sel.creado_por===user.id||canAll))?(
+                  <div className="space-y-3">
+                    <p className="text-xs text-gray-600">¿Qué tan probable es que considere utilizar los servicios de este proveedor en el futuro por su desempeño en este proyecto?</p>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-gray-500">0</span>
+                      <input type="range" min="0" max="10" value={evalForm.score} onChange={e=>setEvalForm(f=>({...f,score:parseInt(e.target.value)}))} className="flex-1 accent-blue-600"/>
+                      <span className="text-xs text-gray-500">10</span>
+                      <span className="font-bold text-blue-700 text-lg w-6">{evalForm.score}</span>
+                    </div>
+                    <p className="text-xs font-medium text-gray-600">Áreas de oportunidad:</p>
+                    <div className="grid grid-cols-1 gap-2">
+                      {AREAS_OPT.map(a=>(
+                        <label key={a} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={evalForm.areas.includes(a)} onChange={e=>setEvalForm(f=>({...f,areas:e.target.checked?[...f.areas,a]:f.areas.filter(x=>x!==a)}))} className="accent-blue-600"/>
+                          {a}
+                        </label>
+                      ))}
+                    </div>
+                    <Input label="Otro (especificar)" value={evalForm.otro} onChange={v=>setEvalForm(f=>({...f,otro:v}))}/>
+                    <Btn onClick={guardarEval} disabled={saving}>{saving?'Guardando...':'Guardar evaluación'}</Btn>
+                  </div>
+                ):<p className="text-xs text-gray-400">La evaluación se habilitará cuando el pago sea confirmado.</p>}
+              </div>
+            )}
+
+            {/* Acciones */}
+            <div className="flex flex-wrap justify-between gap-2 pt-2 border-t border-gray-100">
+              <div className="flex gap-2">
+                {sel.status==='Cancelada'&&sel.motivo_cancelacion&&<p className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-lg">Motivo: {sel.motivo_cancelacion}</p>}
+              </div>
+              <div className="flex gap-2">
+                {sel.status==='Autorizada'&&<Btn size="sm" onClick={()=>sendEmail(sel)}>📧 Enviar correo al proveedor</Btn>}
+                {canAprobar&&sel.status==='Enviada'&&sel.director_id===user.id&&(
+                  <><Btn size="sm" color="green" onClick={()=>cambiarStatus(sel,'Autorizada')}>✓ Autorizar</Btn>
+                  <Btn size="sm" color="red" onClick={()=>setModal('cancelar')}>✗ Cancelar</Btn></>
+                )}
+                {(canAll||user.perm_finanzas)&&sel.status==='Autorizada'&&<Btn size="sm" color="outline" onClick={()=>cambiarStatus(sel,'Pago en proceso')}>→ Pago en proceso</Btn>}
+                {(canAll||user.perm_finanzas)&&sel.status==='Pago en proceso'&&<Btn size="sm" color="green" onClick={()=>cambiarStatus(sel,'Pagada')}>✓ Confirmar pago</Btn>}
+                {sel.status==='Borrador'&&sel.creado_por===user.id&&<Btn size="sm" color="outline" onClick={()=>cambiarStatus(sel,'Enviada')}>📤 Enviar para autorización</Btn>}
+                {['Borrador','Enviada'].includes(sel.status)&&(sel.creado_por===user.id||canAprobar)&&<Btn size="sm" color="red" onClick={()=>setModal('cancelar')}>Cancelar req.</Btn>}
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── MODAL AUTORIZAR ──────────────────────────────────── */}
+      {modal==='autorizar'&&sel&&(
+        <Modal title="Autorizar requisición" onClose={()=>setModal(null)} size="md">
+          <div className="space-y-4">
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+              <p className="font-medium text-green-800">#{sel.numero_requisicion} — {sel.proyectos?.nombre}</p>
+              <p className="text-sm text-green-700 mt-1">Proveedor: {sel.proveedores?.nombre}</p>
+              <p className="text-sm font-bold text-green-800 mt-2">Importe de pago: {fmt(sel.total_pago)}</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Btn color="gray" onClick={()=>setModal(null)}>Volver</Btn>
+              <Btn color="red" onClick={()=>setModal('cancelar')}>✗ Rechazar</Btn>
+              <Btn color="green" disabled={saving} onClick={()=>cambiarStatus(sel,'Autorizada')}>✓ Autorizar</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── MODAL CANCELAR ───────────────────────────────────── */}
+      {modal==='cancelar'&&sel&&(
+        <Modal title="Cancelar requisición" onClose={()=>setModal(null)} size="md">
+          <div className="space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+              <p className="text-sm text-red-800">Requisición #{sel.numero_requisicion} · {sel.proyectos?.nombre}</p>
+            </div>
+            <Textarea label="Motivo de cancelación" value={cancelNota} onChange={setCancelNota} placeholder="Explica por qué se cancela esta requisición..." rows={3}/>
+            <div className="flex justify-end gap-2">
+              <Btn color="gray" onClick={()=>setModal('ver')}>Volver</Btn>
+              <Btn color="red" disabled={saving} onClick={()=>cambiarStatus(sel,'Cancelada',{motivo:cancelNota})}>Confirmar cancelación</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── MODAL PAGO ─────────────────────────────────────────── */}
+      {modal==='pago'&&sel&&(
+        <Modal title="Actualizar status de pago" onClose={()=>setModal(null)} size="md">
+          <div className="space-y-4">
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+              <p className="font-medium text-purple-800">#{sel.numero_requisicion} — {sel.proyectos?.nombre}</p>
+              <p className="text-sm text-purple-700">Proveedor: {sel.proveedores?.nombre}</p>
+              <p className="font-bold text-purple-800 mt-2">Importe: {fmt(sel.total_pago)}</p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              {sel.status==='Autorizada'&&<Btn color="outline" onClick={()=>cambiarStatus(sel,'Pago en proceso')}>→ Pago en proceso</Btn>}
+              {sel.status==='Pago en proceso'&&<Btn color="green" onClick={()=>cambiarStatus(sel,'Pagada')}>✓ Confirmar pago realizado</Btn>}
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function App(){
   const[user,setUser]=useState(()=>getS());
   const[mod,setMod]=useState('dashboard');
@@ -2671,6 +3253,7 @@ function App(){
         {mod==='clientes'&&<ClientesModule user={user}/>}
         {mod==='finanzas'&&<Pronto titulo="Finanzas" icon="💰" semana="2"/>}
         {mod==='proyectos'&&<ProyectosModule user={user}/>}
+        {mod==='requisiciones'&&<RequisicionesModule user={user}/>}
         {mod==='comisiones'&&<ComisionesModule user={user}/>}
         {mod==='calidad'&&<Pronto titulo="Calidad" icon="✅" semana="3"/>}
       </main>
