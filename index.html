@@ -2014,13 +2014,8 @@ function VentasModule({user}){
 
   const autorizarVenta=async(p)=>{
     if(!confirm(`¿Autorizar "${p.nombre}"?\nEl proyecto pasará al módulo de Proyectos.`))return;
-    // Intentar RPC primero; si falla, hacer update directo
-    const{error:rpcErr}=await sb.rpc('fn_autorizar_venta',{p_proyecto_id:p.id});
-    if(rpcErr){
-      // Fallback: pasar a 'Prospecto' para que aparezca en cola de Proyectos
-      const{error:updErr}=await sb.from('proyectos').update({status:'Prospecto',updated_at:new Date().toISOString()}).eq('id',p.id);
-      if(updErr){alert('Error al autorizar: '+updErr.message);return;}
-    }
+    const{error}=await sb.from('proyectos').update({status:'Prospecto'}).eq('id',p.id);
+    if(error){alert('❌ Error al autorizar: '+error.message);return;}
     await load();
     alert('✅ Proyecto autorizado.\n\nAparece ahora en Proyectos con status "Prospecto".\nEl Director puede asignar PM y activarlo desde ese módulo.');
   };
@@ -3265,8 +3260,8 @@ function calcImpuestos(subtotal, regimen){
   const iva      = r.iva      ? subtotal*0.16 : 0;
   const ret_iva  = r.ret_iva  ? (iva/3)*2     : 0;
   const ret_isr  = r.isr      ? subtotal*0.10 : 0;
-  const total    = subtotal + iva - ret_iva - ret_isr;
-  return{iva, ret_iva, ret_isr, total};
+  const total_pago = subtotal + iva - ret_iva - ret_isr;
+  return{iva, ret_iva, ret_isr, total_pago};
 }
 
 const REQ_STATUS_COLOR={Pendiente:'blue',Autorizada:'green','Pago en proceso':'orange',Pagada:'purple',Cancelada:'red'};
