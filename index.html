@@ -10,6 +10,7 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','sans-serif']},colors:{navy:{DEFAULT:'#2c3e50',mid:'#34495e',light:'#3d5166',dark:'#1a252f'},brand:{DEFAULT:'#00b5b5',light:'#00d0d0',pale:'#e0f7f7',dark:'#008a8a'},serta:{gray:'#3d5166',teal:'#00b5b5'}}}}}</script>
   <style>
     body{font-family:'Inter',sans-serif;background:#f4f6f9;}
@@ -2482,7 +2483,7 @@ function ProyectosModule({user}){
                 ['🏢 Cliente',sel.cliente?.nombre||'—'],
                 ['🏷️ Empresa',sel.empresa],
                 ['🔬 Tipo de estudio',sel.tipo_estudio||'—'],
-                ['💵 Importe',sel.importe?fmt(sel.importe):'—'],
+                ['💵 Importe (venta)',sel.importe?fmt(sel.importe):'—'],
                 ['🗓️ Año fiscal',sel.anio_fiscal||'—'],
                 ['💳 No. de pagos',sel.num_pagos||'—'],
                 ['📅 Inicio venta',sel.fecha_inicio_venta?fmtD(sel.fecha_inicio_venta):'—'],
@@ -2491,6 +2492,34 @@ function ProyectosModule({user}){
                 <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
               ))}
             </div>
+            {/* Rentabilidad */}
+            {(sel.importe||sel.costo_final)&&(()=>{
+              const ingreso=parseFloat(sel.importe)||0;
+              const costo=parseFloat(sel.costo_final)||0;
+              const margen=ingreso-costo;
+              const pct=ingreso>0?((margen/ingreso)*100).toFixed(1):null;
+              const color=margen>=0?'#10b981':'#ef4444';
+              return(
+                <div className="rounded-xl p-4 border-2" style={{borderColor:margen>=0?'#a7f3d0':'#fecaca',background:margen>=0?'#f0fdf4':'#fef2f2'}}>
+                  <p className="text-xs font-bold uppercase tracking-wide mb-3" style={{color}}>💹 Rentabilidad del proyecto</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div><p className="text-xs text-gray-500">Ingreso (venta)</p><p className="font-bold text-gray-800">{fmt(ingreso)}</p></div>
+                    <div>
+                      <p className="text-xs text-gray-500">Costo final</p>
+                      {sel.costo_final?<p className="font-bold text-gray-800">{fmt(costo)}</p>:(
+                        <div className="flex items-center gap-1">
+                          <input type="number" placeholder="0.00" className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-24"
+                            onBlur={async e=>{const v=parseFloat(e.target.value)||0;if(v>0){await sb.from('proyectos').update({costo_final:v}).eq('id',sel.id);setSel(s=>({...s,costo_final:v}));}}}/>
+                          <span className="text-xs text-gray-400">Guardar</span>
+                        </div>
+                      )}
+                    </div>
+                    <div><p className="text-xs text-gray-500">Margen {pct&&`(${pct}%)`}</p><p className="font-bold text-lg" style={{color}}>{fmt(margen)}</p></div>
+                  </div>
+                  {sel.costo_final&&<button className="text-xs mt-2 underline" style={{color:'#9ca3af'}} onClick={()=>setSel(s=>({...s,costo_final:null}))}>Editar costo</button>}
+                </div>
+              );
+            })()}
             {sel.pm&&(
               <div className="bg-blue-50 rounded-xl p-3 flex items-center gap-3">
                 <Avatar nombre={sel.pm.nombre} foto_url={sel.pm.foto_url}/>
@@ -3186,8 +3215,8 @@ const AREAS_OPT=['Calidad en el trabajo entregado','Precio adecuado','Disponibil
 
 function RequisicionesModule({user}){
   const isAdmin   = user.rol==='Administrador';
-  const canAll    = isAdmin||user.perm_contabilidad||user.perm_finanzas;
-  const canAprobar= isAdmin||user.perm_aprobar_req||user.perm_autorizar_proyectos;
+  const canAll    = isAdmin||user.rol==='Director'||user.rol==='Gerente'||user.perm_contabilidad||user.perm_finanzas;
+  const canAprobar= isAdmin||user.rol==='Director'||user.rol==='Gerente'||user.perm_aprobar_req||user.perm_autorizar_proyectos;
   const canCreate = isAdmin||user.perm_requisiciones||user.perm_proyectos;
 
   const[rows,setRows]      =useState([]);
@@ -3228,7 +3257,7 @@ function RequisicionesModule({user}){
         director:empleados!requisiciones_director_id_fkey(id,nombre),
         creador:empleados!requisiciones_creado_por_fkey(id,nombre)
       `).order('created_at',{ascending:false}),
-      sb.from('proyectos').select('id,numero_proyecto,nombre,empresa').in('status',['Activo','Cerrado','Prospecto']).order('numero_proyecto',{ascending:false}),
+      sb.from('proyectos').select('id,numero_proyecto,nombre,empresa').in('status',['Activo','Cerrado','Prospecto','Autorizado']).order('numero_proyecto',{ascending:false}),
       sb.from('proveedores').select('id,nombre,email,regimen_fiscal,tipo_comprobante').eq('activo',true).order('nombre'),
       sb.from('empleados').select('id,nombre,rol').eq('activo',true).order('nombre'),
       sb.from('actividades_proveedor').select('nombre').eq('activo',true).order('orden'),
