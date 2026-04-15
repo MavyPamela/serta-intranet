@@ -3660,8 +3660,9 @@ const REQ_STATUS_COLOR={Pendiente:'blue',Autorizada:'green','Pago en proceso':'o
 const AREAS_OPT=['Calidad en el trabajo entregado','Precio adecuado','Disponibilidad y posibilidad de contactarlo','Puntualidad en entrega'];
 
 /* ── Botón para exportar requisiciones de un proyecto a Excel ── */
-function ExportReqBtn({proyectos,proveedores,rows}){
+function ExportReqBtn({proyectos,proveedores,rows,empMap}){
   const pv=id=>(proveedores||[]).find(x=>String(x.id)===String(id))?.nombre||'—';
+  const eNom=id=>(empMap&&empMap[String(id)])||'—';
   const[proy,setProy]=useState('');
   const[exp,setExp]=useState(false);
   const doExport=()=>{
@@ -3759,6 +3760,7 @@ function RequisicionesModule({user}){
     items:[{actividad:'',cantidad:1,precio_unitario:'',total:0}],
     subtotal:0,iva:0,ret_iva:0,ret_isr:0,total_pago:0,
     regimen:'moral',
+    eval_score:8,eval_areas:[],eval_otro:'',
   });
   const[form,setForm]=useState(initForm());
 
@@ -3868,13 +3870,14 @@ function RequisicionesModule({user}){
       if(maxRow?.numero_requisicion) numReq=Math.max(30100,maxRow.numero_requisicion+1);
 
       // INSERT directo — sin RPC
+      const tipoReq=form.tipo||'Normal';
       const obj={
         numero_requisicion:numReq,
         proyecto_id:form.proyecto_id?parseInt(form.proyecto_id):null,
         proveedor_id:form.proveedor_id?parseInt(form.proveedor_id):null,
         director_id:form.director_id?parseInt(form.director_id):null,
         creado_por:user.id,
-        tipo:form.tipo||'Normal',
+        tipo:tipoReq,
         descripcion:form.descripcion||'',
         observaciones:form.observaciones||'',
         subtotal:parseFloat(form.subtotal)||0,
@@ -3883,6 +3886,12 @@ function RequisicionesModule({user}){
         ret_isr:parseFloat(form.ret_isr)||0,
         total_pago:parseFloat(form.total_pago)||0,
         status:statusFinal||'Pendiente',
+        ...(tipoReq==='Normal'?{
+          eval_score:form.eval_score!==''?parseInt(form.eval_score):null,
+          eval_areas:form.eval_areas||[],
+          eval_otro:form.eval_otro||'',
+          eval_fecha:new Date().toISOString(),
+        }:{}),
       };
       const{data:ins,error:insErr}=await sb.from('requisiciones').insert(obj).select('id').single();
       if(insErr)throw insErr;
@@ -4014,7 +4023,7 @@ SERTA de México`
       {/* Búsqueda + Export */}
       <div className="flex gap-2 mb-4 flex-wrap">
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar por folio, proyecto o proveedor..." className="flex-1 min-w-48 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"/>
-        {canAll&&<ExportReqBtn proyectos={proyectos} proveedores={proveedores} rows={rows}/>}
+        {canAll&&<ExportReqBtn proyectos={proyectos} proveedores={proveedores} rows={rows} empMap={empMap}/>}
       </div>
 
       {/* Tabla */}
@@ -4149,6 +4158,30 @@ SERTA de México`
                     <span>IMPORTE DE PAGO</span><span className="font-mono text-green-700">{fmt(form.total_pago)}</span>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* Evaluación del proveedor — solo para tipo Normal */}
+            {form.tipo==='Normal'&&(
+              <div className="rounded-xl p-4" style={{background:'rgba(0,181,181,0.07)',border:'1px solid rgba(0,181,181,0.2)'}}>
+                <p className="text-xs font-semibold uppercase mb-3" style={{color:'#008a8a'}}>⭐ Evaluación del proveedor</p>
+                <p className="text-xs text-gray-600 mb-3">¿Qué tan probable es que consideres utilizar los servicios de este proveedor en el futuro?</p>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-xs text-gray-500">0</span>
+                  <input type="range" min="0" max="10" value={form.eval_score} onChange={e=>setForm(f=>({...f,eval_score:parseInt(e.target.value)}))} className="flex-1" style={{accentColor:'#00b5b5'}}/>
+                  <span className="text-xs text-gray-500">10</span>
+                  <span className="font-bold text-xl w-8 text-center" style={{color:'#008a8a'}}>{form.eval_score}</span>
+                </div>
+                <p className="text-xs font-medium text-gray-600 mb-2">Áreas de oportunidad del proveedor:</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+                  {AREAS_OPT.map(a=>(
+                    <label key={a} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input type="checkbox" checked={(form.eval_areas||[]).includes(a)} onChange={e=>setForm(f=>({...f,eval_areas:e.target.checked?[...(f.eval_areas||[]),a]:(f.eval_areas||[]).filter(x=>x!==a)}))} style={{accentColor:'#00b5b5'}}/>
+                      {a}
+                    </label>
+                  ))}
+                </div>
+                <Input label="Otro (especificar)" value={form.eval_otro||''} onChange={v=>setForm(f=>({...f,eval_otro:v}))} placeholder="Comentario adicional sobre el proveedor..."/>
               </div>
             )}
 
