@@ -3554,7 +3554,7 @@ function RequisicionesModule({user}){
         {data:proy,  error:eProy},
         {data:provs, error:eProvs},
         {data:dirs,  error:eDirs},
-        {data:acts},
+        {data:acts,  error:eActs},
       ]=await Promise.all([
         sb.from('requisiciones').select(
           'id,numero_requisicion,proyecto_id,proveedor_id,director_id,creado_por,tipo,'+
@@ -3567,7 +3567,7 @@ function RequisicionesModule({user}){
         sb.from('proyectos').select('id,numero_proyecto,nombre,empresa').in('status',['Activo','Cerrado','Prospecto','Autorizado']).order('numero_proyecto',{ascending:false}),
         sb.from('proveedores').select('id,nombre,email,regimen_fiscal').eq('activo',true).order('nombre'),
         sb.from('empleados').select('id,nombre,rol').eq('activo',true).order('nombre'),
-        sb.from('actividades_proveedor').select('nombre').eq('activo',true).order('orden').catch(()=>({data:[]})),
+        sb.from('actividades_proveedor').select('nombre').eq('activo',true).order('orden'),
       ]);
 
       if(eReqs){
@@ -3582,7 +3582,7 @@ function RequisicionesModule({user}){
       const todosEmp=eDirs?[]:dirs||[];
       setDirectores(todosEmp.filter(d=>d.rol==='Administrador'||d.rol==='Director'));
       setEmpMap(todosEmp.reduce((m,e)=>{m[String(e.id)]=e.nombre;return m;},{}));
-      setActividades((acts||[]).map(a=>a.nombre));
+      setActividades(eActs?['Trabajo de campo','Análisis de datos','Moderación','Transcripción','Reporte','Otro']:(acts||[]).map(a=>a.nombre));
     }catch(err){
       console.error('Error en load requisiciones:',err);
       alert('❌ Error cargando módulo:\n'+err.message);
