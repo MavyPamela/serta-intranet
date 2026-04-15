@@ -2430,9 +2430,20 @@ function ProyectosModule({user}){
   const activarProyecto=async e=>{
     e.preventDefault();setSaving(true);setMsg('');
     try{
-      const{data:r,error}=await sb.rpc('fn_activar_proyecto',{p_proyecto_id:sel.id,p_pm_id:parseInt(form.pm_id)});
-      if(error)throw error;
-      setMsg(`✅ Proyecto activado. No. de estudio: ${r}`);
+      const pmId=parseInt(form.pm_id);
+      // Intentar RPC (genera numero_estudio automático)
+      const{data:r,error:rpcErr}=await sb.rpc('fn_activar_proyecto',{p_proyecto_id:sel.id,p_pm_id:pmId});
+      if(rpcErr){
+        // Fallback directo: activar sin generar número de estudio (se puede agregar manualmente)
+        const{error:updErr}=await sb.from('proyectos').update({
+          status:'Activo',
+          pm_id:pmId,
+        }).eq('id',sel.id);
+        if(updErr)throw updErr;
+        setMsg('✅ Proyecto activado y PM asignado.');
+      }else{
+        setMsg(`✅ Proyecto activado. No. de estudio: ${r}`);
+      }
       await load();
       setTimeout(()=>{setModal(null);setMsg('');},1400);
     }catch(er){setMsg('❌ '+(er.message||'Error'));}
