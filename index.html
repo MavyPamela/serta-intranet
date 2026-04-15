@@ -1889,13 +1889,15 @@ const STATUS_COLOR={Venta:'purple','En espera de autorización':'orange',Autoriz
 function VentasModule({user}){
   const[data,setData]=useState([]);
   const[clientes,setClientes]=useState([]);
+  const[empleados,setEmpleados]=useState([]);
   const[contactosCliente,setContactosCliente]=useState([]);
   const[loading,setLoading]=useState(true);
   const[fStatus,setFStatus]=useState('pipeline');
   const[search,setSearch]=useState('');
-  const[modal,setModal]=useState(null); // null|'nuevo'|'ver'|'perder'
+  const[modal,setModal]=useState(null); // null|'nuevo'|'ver'|'editar'|'perder'|'autorizar'
   const[sel,setSel]=useState(null);
   const[form,setForm]=useState({});
+  const[pmSelId,setPmSelId]=useState('');
   const[notasPerdido,setNotasPerdido]=useState('');
   const[saving,setSaving]=useState(false);
   const[msg,setMsg]=useState('');
@@ -1915,6 +1917,7 @@ function VentasModule({user}){
   useEffect(()=>{
     load();
     sb.from('clientes').select('id,nombre').order('nombre').then(({data:d})=>setClientes(d||[]));
+    sb.from('empleados').select('id,nombre,foto_url,puesto').eq('activo',true).order('nombre').then(({data:d})=>setEmpleados(d||[]));
   },[load]);
 
   const PIPELINE_STATUSES=['En venta','Venta','En espera de autorización'];
@@ -2012,12 +2015,25 @@ function VentasModule({user}){
     setSaving(false);
   };
 
-  const autorizarVenta=async(p)=>{
-    if(!confirm(`¿Autorizar "${p.nombre}"?\nEl proyecto pasará al módulo de Proyectos.`))return;
-    const{error}=await sb.from('proyectos').update({status:'Prospecto'}).eq('id',p.id);
-    if(error){alert('❌ Error al autorizar: '+error.message);return;}
+  const autorizarVenta=(p)=>{
+    setSel(p);
+    setPmSelId('');
+    setMsg('');
+    setModal('autorizar');
+  };
+
+  const confirmarAutorizacion=async()=>{
+    if(!sel)return;
+    setSaving(true);setMsg('');
+    const upd={status:'Prospecto'};
+    if(pmSelId) upd.pm_id=parseInt(pmSelId);
+    const{error}=await sb.from('proyectos').update(upd).eq('id',sel.id);
+    if(error){setMsg('❌ '+error.message);setSaving(false);return;}
     await load();
-    alert('✅ Proyecto autorizado.\n\nAparece ahora en Proyectos con status "Prospecto".\nEl Director puede asignar PM y activarlo desde ese módulo.');
+    setSaving(false);
+    setModal(null);
+    const pmNombre=pmSelId?empleados.find(e=>String(e.id)===pmSelId)?.nombre:'(sin asignar)';
+    alert(`✅ Proyecto autorizado.\n\nPM asignado: ${pmNombre}\nAparece en Proyectos con status "Prospecto".\nDesde ahí se puede activar y generar el número de estudio.`);
   };
 
   const marcarPerdido=async e=>{
@@ -2151,10 +2167,10 @@ function VentasModule({user}){
               </div>
             )}
             {sel.notas&&<div className="bg-yellow-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-1">📝 Notas</p><p className="text-sm">{sel.notas}</p></div>}
-            {canAuthorize&&sel.status==='En venta'&&(
+            {canAuthorize&&!['Autorizado','Activo','Cerrado','Perdido','Cancelado','Prospecto'].includes(sel.status)&&(
               <div className="flex justify-end gap-2 pt-2">
                 <Btn color="red" onClick={()=>{setModal('perder');setNotasPerdido('');}}>Marcar perdido</Btn>
-                <Btn color="green" onClick={()=>{autorizarVenta(sel);setModal(null);}}>✅ Autorizar → Proyectos</Btn>
+                <Btn color="green" onClick={()=>autorizarVenta(sel)}>✅ Autorizar → Proyectos</Btn>
               </div>
             )}
           </div>
@@ -2249,6 +2265,60 @@ function VentasModule({user}){
               <Btn type="submit" disabled={saving||!form.nombre}>{saving?'Guardando...':modal==='nuevo'?'Crear proyecto':'Guardar cambios'}</Btn>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {/* ── Modal AUTORIZAR → asignar PM ── */}
+      {modal==='autorizar'&&sel&&(
+        <Modal title="Autorizar proyecto" onClose={()=>setModal(null)} size="md">
+          <div className="space-y-5">
+            {/* Info del proyecto */}
+            <div className="rounded-xl p-4 border-2 border-green-200 bg-green-50">
+              <p className="text-xs text-green-600 font-bold uppercase tracking-wide mb-1">Proyecto a autorizar</p>
+              <p className="font-semibold text-gray-800 text-base">{sel.nombre}</p>
+              <div className="flex gap-4 mt-2 text-xs text-green-700">
+                <span>🏢 {sel.cliente?.nombre||'—'}</span>
+                {sel.importe&&<span>💵 {fmt(sel.importe)}</span>}
+                {sel.tipo_estudio&&<span>🔬 {sel.tipo_estudio}</span>}
+              </div>
+            </div>
+
+            {/* Selector de PM */}
+            <div>
+              <label className="text-xs font-semibold text-gray-600 block mb-1.5">
+                👤 Project Manager asignado <span className="font-normal text-gray-400">(opcional — puedes asignarlo después desde Proyectos)</span>
+              </label>
+              <select
+                value={pmSelId}
+                onChange={e=>setPmSelId(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-200"
+              >
+                <option value="">— Sin asignar por ahora —</option>
+                {empleados.map(e=>(
+                  <option key={e.id} value={e.id}>{e.nombre}{e.puesto?' · '+e.puesto:''}</option>
+                ))}
+              </select>
+              {pmSelId&&(
+                <p className="text-xs text-green-700 mt-1.5 bg-green-50 rounded-lg px-3 py-1.5">
+                  ✅ <strong>{empleados.find(e=>String(e.id)===pmSelId)?.nombre}</strong> verá este proyecto en su módulo de Proyectos.
+                </p>
+              )}
+            </div>
+
+            {/* Nota informativa */}
+            <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700">
+              <p>📋 Al autorizar, el proyecto pasa a <strong>Proyectos</strong> con status <strong>"Prospecto"</strong>. Desde ahí se puede activar, generar el número de estudio y asignar o cambiar el PM en cualquier momento.</p>
+            </div>
+
+            {msg&&<p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{msg}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn color="green" onClick={confirmarAutorizacion} disabled={saving}>
+                {saving?'Autorizando...':'✅ Autorizar proyecto'}
+              </Btn>
+            </div>
+          </div>
         </Modal>
       )}
 
