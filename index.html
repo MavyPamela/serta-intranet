@@ -2399,6 +2399,53 @@ function ProyectosModule({user}){
 
   const totalPor=st=>data.filter(p=>p.status===st).length;
 
+  const exportReqExcel=async(proyecto)=>{
+    try{
+      const{data:reqs,error}=await sb.from('requisiciones')
+        .select('numero_requisicion,tipo,descripcion,observaciones,subtotal,iva,ret_iva,ret_isr,total_pago,status,fecha_autorizacion,fecha_pago,created_at,proveedores(nombre),director:empleados!requisiciones_director_id_fkey(nombre)')
+        .eq('proyecto_id',proyecto.id)
+        .order('numero_requisicion',{ascending:true});
+      if(error)throw error;
+      if(!reqs||reqs.length===0){alert('Este proyecto no tiene requisiciones registradas.');return;}
+      const rows=reqs.map(r=>({
+        'No. Req':r.numero_requisicion||'—',
+        'Tipo':r.tipo||'Normal',
+        'Proveedor':r.proveedores?.nombre||'—',
+        'Descripción':r.descripcion||'',
+        'Observaciones':r.observaciones||'',
+        'Subtotal':parseFloat(r.subtotal)||0,
+        'IVA':parseFloat(r.iva)||0,
+        'Ret. IVA':parseFloat(r.ret_iva)||0,
+        'Ret. ISR':parseFloat(r.ret_isr)||0,
+        'Total a Pagar':parseFloat(r.total_pago)||0,
+        'Status':r.status||'',
+        'Director':r.director?.nombre||'—',
+        'Fecha Creación':r.created_at?new Date(r.created_at).toLocaleDateString('es-MX'):'',
+        'Fecha Autorización':r.fecha_autorizacion?new Date(r.fecha_autorizacion).toLocaleDateString('es-MX'):'',
+        'Fecha Pago':r.fecha_pago?new Date(r.fecha_pago).toLocaleDateString('es-MX'):'',
+      }));
+      // Totales
+      const tot={
+        'No. Req':'TOTALES','Tipo':'','Proveedor':'','Descripción':'','Observaciones':'',
+        'Subtotal':rows.reduce((s,r)=>s+r['Subtotal'],0),
+        'IVA':rows.reduce((s,r)=>s+r['IVA'],0),
+        'Ret. IVA':rows.reduce((s,r)=>s+r['Ret. IVA'],0),
+        'Ret. ISR':rows.reduce((s,r)=>s+r['Ret. ISR'],0),
+        'Total a Pagar':rows.reduce((s,r)=>s+r['Total a Pagar'],0),
+        'Status':'','Director':'','Fecha Creación':'','Fecha Autorización':'','Fecha Pago':'',
+      };
+      rows.push(tot);
+      const wb=window.XLSX.utils.book_new();
+      const ws=window.XLSX.utils.json_to_sheet(rows);
+      // Ancho de columnas
+      ws['!cols']=[{wch:10},{wch:10},{wch:28},{wch:35},{wch:25},{wch:14},{wch:12},{wch:12},{wch:12},{wch:15},{wch:16},{wch:22},{wch:16},{wch:18},{wch:14}];
+      const nombre=(proyecto.nombre||'Proyecto').replace(/[^a-zA-Z0-9_\-áéíóúÁÉÍÓÚ ]/g,'').substring(0,30);
+      const folio=proyecto.numero_proyecto||proyecto.id;
+      window.XLSX.utils.book_append_sheet(wb,ws,`Req ${folio}`);
+      window.XLSX.writeFile(wb,`Requisiciones_${folio}_${nombre}.xlsx`);
+    }catch(e){alert('Error al exportar: '+e.message);}
+  };
+
   return(
     <div className="p-6 fade">
       {/* Header */}
@@ -2540,6 +2587,18 @@ function ProyectosModule({user}){
               </div>
             )}
             {sel.notas&&<div className="bg-yellow-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-1">📝 Notas</p><p className="text-sm">{sel.notas}</p></div>}
+            {/* Exportar Requisiciones */}
+            <div className="border-t border-gray-100 pt-4 mt-2">
+              <button
+                onClick={()=>exportReqExcel(sel)}
+                className="w-full flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition"
+                style={{background:'#f0fdf4',color:'#16a34a',border:'1.5px solid #bbf7d0'}}
+                onMouseOver={e=>{e.currentTarget.style.background='#dcfce7';}}
+                onMouseOut={e=>{e.currentTarget.style.background='#f0fdf4';}}
+              >
+                📥 Exportar requisiciones a Excel
+              </button>
+            </div>
           </div>
         </Modal>
       )}
@@ -3213,6 +3272,71 @@ function calcImpuestos(subtotal, regimen){
 const REQ_STATUS_COLOR={Pendiente:'blue',Autorizada:'green','Pago en proceso':'orange',Pagada:'purple',Cancelada:'red'};
 const AREAS_OPT=['Calidad en el trabajo entregado','Precio adecuado','Disponibilidad y posibilidad de contactarlo','Puntualidad en entrega'];
 
+/* ── Botón para exportar requisiciones de un proyecto a Excel ── */
+function ExportReqBtn({proyectos,rows}){
+  const[proy,setProy]=useState('');
+  const[exp,setExp]=useState(false);
+  const doExport=()=>{
+    if(!proy){alert('Selecciona un proyecto para exportar.');return;}
+    const proyecto=proyectos.find(p=>String(p.id)===String(proy));
+    if(!proyecto)return;
+    const reqs=rows.filter(r=>String(r.proyecto_id)===String(proy));
+    if(reqs.length===0){alert('Este proyecto no tiene requisiciones registradas.');return;}
+    setExp(true);
+    try{
+      const data=reqs.map(r=>({
+        'No. Req':r.numero_requisicion||'—',
+        'Tipo':r.tipo||'Normal',
+        'Proveedor':r.proveedores?.nombre||'—',
+        'Descripción':r.descripcion||'',
+        'Observaciones':r.observaciones||'',
+        'Subtotal':parseFloat(r.subtotal)||0,
+        'IVA':parseFloat(r.iva)||0,
+        'Ret. IVA':parseFloat(r.ret_iva)||0,
+        'Ret. ISR':parseFloat(r.ret_isr)||0,
+        'Total a Pagar':parseFloat(r.total_pago)||0,
+        'Status':r.status||'',
+        'Director':r.director?.nombre||'—',
+        'Creado por':r.creador?.nombre||'—',
+        'Fecha Creación':r.created_at?new Date(r.created_at).toLocaleDateString('es-MX'):'',
+        'Fecha Autorización':r.fecha_autorizacion?new Date(r.fecha_autorizacion).toLocaleDateString('es-MX'):'',
+        'Fecha Pago':r.fecha_pago?new Date(r.fecha_pago).toLocaleDateString('es-MX'):'',
+      }));
+      // Fila de totales
+      data.push({
+        'No. Req':'TOTALES','Tipo':'','Proveedor':'','Descripción':'','Observaciones':'',
+        'Subtotal':data.reduce((s,r)=>s+(typeof r['Subtotal']==='number'?r['Subtotal']:0),0),
+        'IVA':data.reduce((s,r)=>s+(typeof r['IVA']==='number'?r['IVA']:0),0),
+        'Ret. IVA':data.reduce((s,r)=>s+(typeof r['Ret. IVA']==='number'?r['Ret. IVA']:0),0),
+        'Ret. ISR':data.reduce((s,r)=>s+(typeof r['Ret. ISR']==='number'?r['Ret. ISR']:0),0),
+        'Total a Pagar':data.reduce((s,r)=>s+(typeof r['Total a Pagar']==='number'?r['Total a Pagar']:0),0),
+        'Status':'','Director':'','Creado por':'','Fecha Creación':'','Fecha Autorización':'','Fecha Pago':'',
+      });
+      const wb=window.XLSX.utils.book_new();
+      const ws=window.XLSX.utils.json_to_sheet(data);
+      ws['!cols']=[{wch:10},{wch:10},{wch:28},{wch:35},{wch:25},{wch:14},{wch:12},{wch:12},{wch:12},{wch:15},{wch:16},{wch:22},{wch:18},{wch:16},{wch:18},{wch:14}];
+      const nombre=(proyecto.nombre||'Proyecto').replace(/[^a-zA-Z0-9_\-áéíóúÁÉÍÓÚ ]/g,'').substring(0,30);
+      const folio=proyecto.numero_proyecto||proyecto.id;
+      window.XLSX.utils.book_append_sheet(wb,ws,`Req ${folio}`);
+      window.XLSX.writeFile(wb,`Requisiciones_${folio}_${nombre}.xlsx`);
+    }catch(e){alert('Error al exportar: '+e.message);}
+    finally{setExp(false);}
+  };
+  return(
+    <div className="flex items-center gap-2">
+      <select value={proy} onChange={e=>setProy(e.target.value)} className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-200" style={{minWidth:180}}>
+        <option value="">📁 Proyecto para exportar...</option>
+        {proyectos.map(p=><option key={p.id} value={p.id}>{p.numero_proyecto?`#${p.numero_proyecto} — `:''}{p.nombre}</option>)}
+      </select>
+      <button onClick={doExport} disabled={exp||!proy}
+        className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition"
+        style={{background:proy?'#f0fdf4':'#f9fafb',color:proy?'#16a34a':'#9ca3af',border:`1.5px solid ${proy?'#bbf7d0':'#e5e7eb'}`,cursor:proy?'pointer':'not-allowed'}}>
+        {exp?'⏳ Exportando...':'📥 Excel'}
+      </button>
+    </div>
+  );
+}
+
 function RequisicionesModule({user}){
   const isAdmin   = user.rol==='Administrador';
   const canAll    = isAdmin||user.rol==='Director'||user.rol==='Gerente'||user.perm_contabilidad||user.perm_finanzas;
@@ -3448,8 +3572,11 @@ SERTA de México`
         ))}
       </div>
 
-      {/* Búsqueda */}
-      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar por folio, proyecto o proveedor..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 mb-4"/>
+      {/* Búsqueda + Export */}
+      <div className="flex gap-2 mb-4 flex-wrap">
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar por folio, proyecto o proveedor..." className="flex-1 min-w-48 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"/>
+        {canAll&&<ExportReqBtn proyectos={proyectos} rows={rows}/>}
+      </div>
 
       {/* Tabla */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
