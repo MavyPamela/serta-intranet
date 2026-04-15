@@ -3463,7 +3463,7 @@ function RequisicionesModule({user}){
       sb.from('actividades_proveedor').select('nombre').eq('activo',true).order('orden'),
     ]);
     const all=reqs||[];
-    setRows(canAll?all:all.filter(r=>r.creado_por===user.id));
+    setRows(canAll?all:all.filter(r=>String(r.creado_por)===String(user.id)));
     setProyectos(proy||[]);
     setProveedores(provs||[]);
     setDirectores((dirs||[]).filter(d=>d.rol==='Administrador'||d.rol==='Director'));
@@ -3474,8 +3474,8 @@ function RequisicionesModule({user}){
   useEffect(()=>{load();},[load]);
 
   // Tabs
-  const misReqs     = rows.filter(r=>r.creado_por===user.id);
-  const porAutorizar= rows.filter(r=>r.director_id===user.id&&r.status==='Pendiente');
+  const misReqs     = rows.filter(r=>String(r.creado_por)===String(user.id));
+  const porAutorizar= rows.filter(r=>String(r.director_id)===String(user.id)&&r.status==='Pendiente');
   const filtered    = useMemo(()=>{
     const base=tab==='mis'?misReqs:tab==='autorizar'?porAutorizar:rows;
     if(!search)return base;
@@ -3524,7 +3524,9 @@ function RequisicionesModule({user}){
   const save=async(statusFinal)=>{
     setSaving(true);setMsg('');
     try{
-      const rid=await sb.rpc('fn_crear_requisicion',{
+      let reqId=null;
+      // Intentar RPC primero (genera número consecutivo)
+      const{data:rpcData,error:rpcErr}=await sb.rpc('fn_crear_requisicion',{
         p_proyecto_id:form.proyecto_id?parseInt(form.proyecto_id):null,
         p_proveedor_id:form.proveedor_id?parseInt(form.proveedor_id):null,
         p_director_id:form.director_id?parseInt(form.director_id):null,
@@ -3539,10 +3541,37 @@ function RequisicionesModule({user}){
         p_total_pago:form.total_pago,
         p_status:statusFinal,
       });
-      if(rid.error)throw rid.error;
-      const reqId=rid.data;
+      if(rpcErr){
+        // Fallback: INSERT directo, número consecutivo desde configuracion
+        let numReq=30100;
+        const{data:cfg}=await sb.from('configuracion').select('valor').eq('clave','ultimo_numero_requisicion').maybeSingle();
+        if(cfg){
+          numReq=parseInt(cfg.valor)+1;
+          await sb.from('configuracion').update({valor:String(numReq)}).eq('clave','ultimo_numero_requisicion');
+        }
+        const{data:ins,error:insErr}=await sb.from('requisiciones').insert({
+          numero_requisicion:numReq,
+          proyecto_id:form.proyecto_id?parseInt(form.proyecto_id):null,
+          proveedor_id:form.proveedor_id?parseInt(form.proveedor_id):null,
+          director_id:form.director_id?parseInt(form.director_id):null,
+          creado_por:user.id,
+          tipo:form.tipo,
+          descripcion:form.descripcion,
+          observaciones:form.observaciones,
+          subtotal:form.subtotal,
+          iva:form.iva,
+          ret_iva:form.ret_iva,
+          ret_isr:form.ret_isr,
+          total_pago:form.total_pago,
+          status:statusFinal,
+        }).select('id').single();
+        if(insErr)throw insErr;
+        reqId=ins.id;
+      }else{
+        reqId=rpcData;
+      }
       // Guardar partidas
-      if(form.items.length){
+      if(reqId&&form.items.length){
         const items=form.items.filter(i=>i.actividad).map((i,idx)=>({
           requisicion_id:reqId,actividad_nombre:i.actividad,
           cantidad:parseFloat(i.cantidad)||1,
@@ -3551,7 +3580,7 @@ function RequisicionesModule({user}){
         }));
         if(items.length)await sb.from('req_items').insert(items);
       }
-      setMsg('✅ Requisición registrada — pendiente de autorización por el director');
+      setMsg('✅ Requisición registrada correctamente');
       await load();
       setTimeout(()=>{setModal(null);setMsg('');},1000);
     }catch(e){setMsg('❌ '+e.message);}
