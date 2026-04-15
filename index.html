@@ -1890,7 +1890,7 @@ function VentasModule({user}){
   const[clientes,setClientes]=useState([]);
   const[contactosCliente,setContactosCliente]=useState([]);
   const[loading,setLoading]=useState(true);
-  const[fStatus,setFStatus]=useState('En venta');
+  const[fStatus,setFStatus]=useState('pipeline');
   const[search,setSearch]=useState('');
   const[modal,setModal]=useState(null); // null|'nuevo'|'ver'|'perder'
   const[sel,setSel]=useState(null);
@@ -1907,7 +1907,6 @@ function VentasModule({user}){
     setLoading(true);
     const{data:d}=await sb.from('proyectos')
       .select('*, cliente:clientes(nombre,razon_social), creador:empleados!proyectos_created_by_fkey(nombre)')
-      .in('status',['En venta','Perdido'])
       .order('numero_proyecto',{ascending:false});
     setData(d||[]);setLoading(false);
   },[]);
@@ -1917,10 +1916,14 @@ function VentasModule({user}){
     sb.from('clientes').select('id,nombre').order('nombre').then(({data:d})=>setClientes(d||[]));
   },[load]);
 
+  const PIPELINE_STATUSES=['En venta','Venta','En espera de autorización'];
   const filt=useMemo(()=>(data||[]).filter(p=>{
     const q=search.toLowerCase();
     const matchQ=!q||(p.nombre||'').toLowerCase().includes(q)||(p.numero_proyecto?.toString()||'').includes(q)||(p.cliente?.nombre||'').toLowerCase().includes(q);
-    const matchS=!fStatus||p.status===fStatus;
+    let matchS=true;
+    if(fStatus==='pipeline') matchS=PIPELINE_STATUSES.includes(p.status);
+    else if(fStatus==='Autorizado') matchS=p.status==='Autorizado'||p.status==='Activo';
+    else if(fStatus) matchS=p.status===fStatus;
     return matchQ&&matchS;
   }),[data,search,fStatus]);
 
@@ -2023,8 +2026,12 @@ function VentasModule({user}){
     setSaving(false);
   };
 
-  const totalPor=st=>(data||[]).filter(p=>p.status===st||(st==='Venta'&&p.status==='En venta')).length;
-  const importeTotal=()=>(data||[]).filter(p=>(p.status==='Venta'||p.status==='En venta'||p.status==='En espera de autorización')&&p.importe).reduce((s,p)=>s+(p.importe||0),0);
+  const totalPor=st=>{
+    if(st==='pipeline') return (data||[]).filter(p=>PIPELINE_STATUSES.includes(p.status)).length;
+    if(st==='Autorizado') return (data||[]).filter(p=>p.status==='Autorizado'||p.status==='Activo').length;
+    return (data||[]).filter(p=>p.status===st).length;
+  };
+  const importeTotal=()=>(data||[]).filter(p=>PIPELINE_STATUSES.includes(p.status)&&p.importe).reduce((s,p)=>s+(p.importe||0),0);
 
   return(
     <div className="p-6 fade">
@@ -2039,23 +2046,29 @@ function VentasModule({user}){
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <div onClick={()=>setFStatus(fStatus==='Venta'?'':'Venta')} className="rounded-2xl p-4 border-2 cursor-pointer transition border-gray-100 bg-white hover:border-gray-200" style={fStatus==='Venta'?{borderColor:'#00b5b5',background:'rgba(0,181,181,0.07)'}:{}}>
-          <div className="flex items-center justify-between"><span className="text-sm text-gray-500">En venta</span><span>💼</span></div>
-          <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('Venta')}</p>
+        <div onClick={()=>setFStatus('pipeline')} className="rounded-2xl p-4 border-2 cursor-pointer transition" style={fStatus==='pipeline'?{borderColor:'#00b5b5',background:'rgba(0,181,181,0.07)'}:{borderColor:'#e5e7eb',background:'white'}}>
+          <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Pipeline activo</span><span>💼</span></div>
+          <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('pipeline')}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{fmt(importeTotal())} sin IVA</p>
         </div>
-        <div className="rounded-2xl p-4 border-2 border-gray-100 bg-white">
-          <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Importe pipeline</span><span>💵</span></div>
-          <p className="text-xl font-bold mt-1 text-gray-800">{fmt(importeTotal())}</p>
-          <p className="text-xs text-gray-400 mt-0.5">sin IVA</p>
+        <div onClick={()=>setFStatus('En espera de autorización')} className="rounded-2xl p-4 border-2 cursor-pointer transition" style={fStatus==='En espera de autorización'?{borderColor:'#f59e0b',background:'#fffbeb'}:{borderColor:'#e5e7eb',background:'white'}}>
+          <div className="flex items-center justify-between"><span className="text-sm text-gray-500">En espera</span><span>⏳</span></div>
+          <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('En espera de autorización')}</p>
         </div>
-        <div onClick={()=>setFStatus(fStatus==='Perdido'?'':'Perdido')} className={`rounded-2xl p-4 border-2 cursor-pointer transition ${fStatus==='Perdido'?'border-gray-400 bg-gray-50':'border-gray-100 bg-white hover:border-gray-200'}`}>
+        <div onClick={()=>setFStatus('Autorizado')} className="rounded-2xl p-4 border-2 cursor-pointer transition" style={fStatus==='Autorizado'?{borderColor:'#10b981',background:'#f0fdf4'}:{borderColor:'#e5e7eb',background:'white'}}>
+          <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Autorizados</span><span>✅</span></div>
+          <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('Autorizado')}</p>
+          <p className="text-xs text-green-600 mt-0.5">Visibles en Proyectos</p>
+        </div>
+        <div onClick={()=>setFStatus('Perdido')} className="rounded-2xl p-4 border-2 cursor-pointer transition" style={fStatus==='Perdido'?{borderColor:'#ef4444',background:'#fef2f2'}:{borderColor:'#e5e7eb',background:'white'}}>
           <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Perdidos</span><span>❌</span></div>
           <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('Perdido')}</p>
         </div>
-        <div className="rounded-2xl p-4 border-2 border-green-100 bg-green-50">
-          <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Autorizados</span><span>✅</span></div>
-          <p className="text-xs text-green-600 font-medium mt-2">Se mueven a Proyectos al autorizarse</p>
-        </div>
+      </div>
+      {/* Filtro tab "Todos" */}
+      <div className="flex gap-2 mb-3">
+        <button onClick={()=>setFStatus('')} className="text-xs px-3 py-1.5 rounded-full border transition" style={fStatus===''?{background:'#1a252f',color:'white',borderColor:'#1a252f'}:{borderColor:'#e5e7eb',color:'#6b7280'}}>Todos los registros</button>
+        <button onClick={()=>setFStatus('Cancelado')} className="text-xs px-3 py-1.5 rounded-full border transition" style={fStatus==='Cancelado'?{background:'#6b7280',color:'white',borderColor:'#6b7280'}:{borderColor:'#e5e7eb',color:'#6b7280'}}>Cancelados</button>
       </div>
 
       {/* Buscador */}
@@ -2078,7 +2091,7 @@ function VentasModule({user}){
               <tbody className="divide-y divide-gray-50">
                 {filt.map(p=>(
                   <tr key={p.id} className="hover:bg-gray-50/70 transition">
-                    <td className="px-4 py-3 font-mono text-gray-600 font-medium">#{p.numero_proyecto}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{(p.status==='Autorizado'||p.status==='Activo'||p.status==='Cerrado')?<span className="text-gray-700 font-medium">#{p.numero_proyecto}</span>:<span className="text-gray-300 italic">Sin folio</span>}</td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-gray-800">{p.nombre}</p>
                       <p className="text-xs text-gray-400">{p.empresa} · {p.tipo_estudio||'—'}</p>
@@ -2105,7 +2118,7 @@ function VentasModule({user}){
 
       {/* ── Modal VER ── */}
       {modal==='ver'&&sel&&(
-        <Modal title={`Proyecto #${sel.numero_proyecto}`} onClose={()=>setModal(null)} size="lg">
+        <Modal title={(sel.status==='Autorizado'||sel.status==='Activo'||sel.status==='Cerrado')?`Proyecto #${sel.numero_proyecto}`:`Proyecto en pipeline`} onClose={()=>setModal(null)} size="lg">
           <div className="space-y-4">
             <Badge text={sel.status} color={STATUS_COLOR[sel.status]||'gray'}/>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -2287,7 +2300,7 @@ function ProyectosModule({user}){
     setLoading(true);
     const{data:d}=await sb.from('proyectos')
       .select('*, cliente:clientes(nombre), pm:empleados!proyectos_pm_id_fkey(nombre,foto_url)')
-      .in('status',['Prospecto','Activo','Cerrado','Cancelado'])
+      .in('status',['Prospecto','Activo','Cerrado','Cancelado','Autorizado'])
       .order('numero_proyecto',{ascending:false});
     setData(d||[]);setLoading(false);
   },[]);
