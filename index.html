@@ -2452,8 +2452,32 @@ function ProyectosModule({user}){
 
   const cancelarProyecto=async(p)=>{
     if(!confirm(`¿Cancelar el proyecto "${p.nombre}"?`))return;
-    await sb.from('proyectos').update({status:'Cancelado',updated_at:new Date().toISOString()}).eq('id',p.id);
+    await sb.from('proyectos').update({status:'Cancelado'}).eq('id',p.id);
     load();
+  };
+
+  const editarProyecto=async e=>{
+    e.preventDefault();setSaving(true);setMsg('');
+    try{
+      const{error}=await sb.from('proyectos').update({
+        nombre:       form.nombre,
+        tipo_estudio: form.tipo_estudio||'',
+        empresa:      form.empresa||'SERTA',
+        num_pagos:    parseInt(form.num_pagos)||1,
+        anio_fiscal:  parseInt(form.anio_fiscal)||null,
+        importe:      form.importe?parseFloat(form.importe):null,
+        costo_final:  form.costo_final?parseFloat(form.costo_final):null,
+        fecha_inicio_venta:    form.fecha_inicio_venta||null,
+        fecha_inicio_proyecto: form.fecha_inicio_proyecto||null,
+        notas:        form.notas||'',
+        pm_id:        form.pm_id?parseInt(form.pm_id):null,
+      }).eq('id',sel.id);
+      if(error)throw error;
+      setMsg('✅ Proyecto actualizado');
+      await load();
+      setTimeout(()=>{setModal(null);setMsg('');},1000);
+    }catch(er){setMsg('❌ '+(er.message||'Error'));}
+    setSaving(false);
   };
 
   const cerrarProyecto=async(p)=>{
@@ -2572,12 +2596,13 @@ function ProyectosModule({user}){
                       {p.numero_estudio?<span className="font-mono font-medium" style={{color:'#00b5b5'}}>{p.numero_estudio}</span>:<span className="text-gray-300 text-xs">Sin asignar</span>}
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell">
-                      {p.pm?<div className="flex items-center gap-2"><Avatar nombre={p.pm.nombre} foto_url={p.pm.foto_url} size="sm"/><span className="text-gray-700 text-xs">{p.pm.nombre}</span></div>:<span className="text-gray-300 text-xs">Sin asignar</span>}
+                      {p.pm_id?(()=>{const pm=empleados.find(e=>e.id===p.pm_id);return pm?<div className="flex items-center gap-2"><Avatar nombre={pm.nombre} foto_url={pm.foto_url} size="sm"/><span className="text-gray-700 text-xs">{pm.nombre}</span></div>:<span className="text-gray-300 text-xs">ID:{p.pm_id}</span>;})():<span className="text-gray-300 text-xs">Sin asignar</span>}
                     </td>
                     <td className="px-4 py-3"><Badge text={p.status} color={STATUS_COLOR[p.status]||'gray'}/></td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
                         <Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadColabs(p.id);setModal('ver');}}>Ver</Btn>
+                        {(isPM(p)||isAdmin||canActivate)&&['Activo','Prospecto','Autorizado'].includes(p.status)&&<Btn size="sm" color="outline" onClick={()=>{setSel(p);setForm({...p,pm_id:p.pm_id||'',importe:p.importe||'',costo_final:p.costo_final||''});setMsg('');setModal('editar');}}>✏️ Editar</Btn>}
                         {canActivate&&(p.status==='Prospecto'||p.status==='Autorizado')&&<Btn size="sm" color="green" onClick={()=>{setSel(p);setForm({pm_id:''});setMsg('');setModal('activar');}}>Activar</Btn>}
                         {(isPM(p)||isAdmin)&&p.status==='Activo'&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadColabs(p.id);setModal('colabs');}}>Equipo</Btn>}
                         {(isPM(p)||isAdmin)&&p.status==='Activo'&&<Btn size="sm" color="blue" onClick={()=>cerrarProyecto(p)}>Cerrar</Btn>}
@@ -2676,6 +2701,80 @@ function ProyectosModule({user}){
               </button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* ── Modal EDITAR proyecto ── */}
+      {modal==='editar'&&sel&&(
+        <Modal title={`Editar — ${sel.nombre}`} onClose={()=>setModal(null)} size="xl">
+          <form onSubmit={editarProyecto} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input label="Nombre del proyecto" value={form.nombre||''} onChange={v=>setForm(f=>({...f,nombre:v}))} required className="md:col-span-2"/>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Tipo de estudio</label>
+                <select value={form.tipo_estudio||''} onChange={e=>setForm(f=>({...f,tipo_estudio:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
+                  {['Cuantitativo','Cualitativo','Mixto','Panel','Rastreo','Misterioso','Otro'].map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Empresa</label>
+                <select value={form.empresa||'SERTA'} onChange={e=>setForm(f=>({...f,empresa:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
+                  <option>SERTA</option><option>SERTA MR</option><option>Otra</option>
+                </select>
+              </div>
+              <Input label="Año fiscal" type="number" value={form.anio_fiscal||''} onChange={v=>setForm(f=>({...f,anio_fiscal:v}))}/>
+              <Input label="No. de pagos" type="number" min="1" value={form.num_pagos||1} onChange={v=>setForm(f=>({...f,num_pagos:v}))}/>
+              <Input label="Fecha inicio venta" type="date" value={form.fecha_inicio_venta||''} onChange={v=>setForm(f=>({...f,fecha_inicio_venta:v}))}/>
+              <Input label="Fecha inicio proyecto" type="date" value={form.fecha_inicio_proyecto||''} onChange={v=>setForm(f=>({...f,fecha_inicio_proyecto:v}))}/>
+            </div>
+
+            {/* Financiero */}
+            <div className="rounded-xl border-2 border-teal-100 bg-teal-50/40 p-4">
+              <p className="text-xs font-bold text-teal-700 uppercase tracking-wide mb-3">💵 Información financiera</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Importe de venta (s/IVA)</label>
+                  <input type="number" min="0" step="0.01" value={form.importe||''} onChange={e=>setForm(f=>({...f,importe:e.target.value}))} placeholder="0.00" className="border border-gray-300 rounded-xl px-3 py-2 text-sm"/>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Costo final del proyecto</label>
+                  <input type="number" min="0" step="0.01" value={form.costo_final||''} onChange={e=>setForm(f=>({...f,costo_final:e.target.value}))} placeholder="0.00" className="border border-gray-300 rounded-xl px-3 py-2 text-sm"/>
+                </div>
+              </div>
+              {(form.importe||form.costo_final)&&(()=>{
+                const ing=parseFloat(form.importe)||0;
+                const cos=parseFloat(form.costo_final)||0;
+                const mar=ing-cos;
+                const pct=ing>0?((mar/ing)*100).toFixed(1):null;
+                const color=mar>=0?'#10b981':'#ef4444';
+                return mar||cos?(
+                  <div className="mt-3 flex gap-4 text-sm">
+                    <span className="text-gray-500">Margen: <strong style={{color}}>{fmt(mar)}{pct?` (${pct}%)`:''}</strong></span>
+                  </div>
+                ):null;
+              })()}
+            </div>
+
+            {/* PM */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">👤 Project Manager</label>
+              <select value={form.pm_id||''} onChange={e=>setForm(f=>({...f,pm_id:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
+                <option value="">— Sin asignar —</option>
+                {empleados.map(e=><option key={e.id} value={e.id}>{e.nombre}{e.puesto?' · '+e.puesto:''}</option>)}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">📝 Notas</label>
+              <textarea value={form.notas||''} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} rows={3} className="border border-gray-300 rounded-xl px-3 py-2 text-sm resize-none" placeholder="Observaciones, detalles del proyecto..."/>
+            </div>
+
+            {msg&&<p className="text-sm rounded-lg px-3 py-2 bg-gray-50">{msg}</p>}
+            <div className="flex justify-end gap-2">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn type="submit" disabled={saving}>{saving?'Guardando...':'💾 Guardar cambios'}</Btn>
+            </div>
+          </form>
         </Modal>
       )}
 
@@ -3448,28 +3547,46 @@ function RequisicionesModule({user}){
 
   const load=useCallback(async()=>{
     setLoading(true);
-    const[{data:reqs},{data:proy},{data:provs},{data:dirs},{data:acts}]=await Promise.all([
-      sb.from('requisiciones').select(`
-        id,numero_requisicion,proyecto_id,proveedor_id,director_id,creado_por,tipo,
-        descripcion,observaciones,subtotal,iva,ret_iva,ret_isr,total_pago,status,
-        fecha_envio,fecha_autorizacion,fecha_pago,motivo_cancelacion,
-        eval_score,eval_areas,eval_otro,eval_fecha,created_at,
-        proyectos(id,nombre,numero_proyecto,cliente:clientes(nombre)),
-        proveedores(id,nombre,email,regimen_fiscal,tipo_comprobante)
-      `).order('created_at',{ascending:false}),
-      sb.from('proyectos').select('id,numero_proyecto,nombre,empresa').in('status',['Activo','Cerrado','Prospecto','Autorizado']).order('numero_proyecto',{ascending:false}),
-      sb.from('proveedores').select('id,nombre,email,regimen_fiscal,tipo_comprobante').eq('activo',true).order('nombre'),
-      sb.from('empleados').select('id,nombre,rol').eq('activo',true).order('nombre'),
-      sb.from('actividades_proveedor').select('nombre').eq('activo',true).order('orden'),
-    ]);
-    const all=reqs||[];
-    setRows(canAll?all:all.filter(r=>String(r.creado_por)===String(user.id)));
-    setProyectos(proy||[]);
-    setProveedores(provs||[]);
-    const todosEmp=dirs||[];
-    setDirectores(todosEmp.filter(d=>d.rol==='Administrador'||d.rol==='Director'));
-    setEmpMap(todosEmp.reduce((m,e)=>{m[String(e.id)]=e.nombre;return m;},{}));
-    setActividades((acts||[]).map(a=>a.nombre));
+    try{
+      // Queries independientes para que si una falla no rompa todo
+      const[
+        {data:reqs,  error:eReqs},
+        {data:proy,  error:eProy},
+        {data:provs, error:eProvs},
+        {data:dirs,  error:eDirs},
+        {data:acts},
+      ]=await Promise.all([
+        sb.from('requisiciones').select(
+          'id,numero_requisicion,proyecto_id,proveedor_id,director_id,creado_por,tipo,'+
+          'descripcion,observaciones,subtotal,iva,ret_iva,ret_isr,total_pago,status,'+
+          'fecha_envio,fecha_autorizacion,fecha_pago,motivo_cancelacion,'+
+          'eval_score,eval_areas,eval_otro,eval_fecha,created_at,'+
+          'proyectos(id,nombre,numero_proyecto),'+
+          'proveedores(id,nombre,email,regimen_fiscal)'
+        ).order('created_at',{ascending:false}),
+        sb.from('proyectos').select('id,numero_proyecto,nombre,empresa').in('status',['Activo','Cerrado','Prospecto','Autorizado']).order('numero_proyecto',{ascending:false}),
+        sb.from('proveedores').select('id,nombre,email,regimen_fiscal').eq('activo',true).order('nombre'),
+        sb.from('empleados').select('id,nombre,rol').eq('activo',true).order('nombre'),
+        sb.from('actividades_proveedor').select('nombre').eq('activo',true).order('orden').catch(()=>({data:[]})),
+      ]);
+
+      if(eReqs){
+        console.error('Error cargando requisiciones:',eReqs.message);
+        alert('⚠️ No se pudieron cargar las requisiciones:\n\n'+eReqs.message+'\n\nEjecuta SQL_COMPLETO_REQUISICIONES.sql en Supabase.');
+      }
+
+      const all=reqs||[];
+      setRows(canAll?all:all.filter(r=>String(r.creado_por)===String(user.id)));
+      setProyectos(eProy?[]:proy||[]);
+      setProveedores(eProvs?[]:provs||[]);
+      const todosEmp=eDirs?[]:dirs||[];
+      setDirectores(todosEmp.filter(d=>d.rol==='Administrador'||d.rol==='Director'));
+      setEmpMap(todosEmp.reduce((m,e)=>{m[String(e.id)]=e.nombre;return m;},{}));
+      setActividades((acts||[]).map(a=>a.nombre));
+    }catch(err){
+      console.error('Error en load requisiciones:',err);
+      alert('❌ Error cargando módulo:\n'+err.message);
+    }
     setLoading(false);
   },[canAll,user.id]);
 
