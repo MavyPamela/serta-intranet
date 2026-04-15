@@ -2775,24 +2775,28 @@ function ProyectosModule({user}){
             {/* ── Datos generales ── */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input label="Nombre del proyecto *" value={form.nombre||''} onChange={v=>setForm(f=>({...f,nombre:v}))} required className="md:col-span-2"/>
+              {/* Project Manager — asignado desde Ventas, solo lectura */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-600">Project Manager</label>
-                <select value={form.pm_id||''} onChange={e=>setForm(f=>({...f,pm_id:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
-                  <option value="">— Sin asignar —</option>
-                  {empleados.map(e=><option key={e.id} value={e.id}>{e.nombre}{e.puesto?' · '+e.puesto:''}</option>)}
-                </select>
+                <label className="text-xs font-medium text-gray-500">👤 Project Manager <span className="text-gray-400 font-normal">(asignado en Ventas)</span></label>
+                <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
+                  {(()=>{const pm=empleados.find(e=>String(e.id)===String(form.pm_id));return pm?(
+                    <><Avatar nombre={pm.nombre} foto_url={pm.foto_url} size="sm"/><span className="text-sm font-medium text-gray-800">{pm.nombre}{pm.puesto&&<span className="text-gray-400 text-xs ml-1">· {pm.puesto}</span>}</span></>
+                  ):<span className="text-sm text-gray-400 italic">Sin asignar</span>;})()}
+                </div>
               </div>
+              {/* Tipo de estudio — viene de Ventas, solo lectura */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-600">Tipo de estudio *</label>
-                <select value={form.tipo_estudio||''} onChange={e=>setForm(f=>({...f,tipo_estudio:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
-                  {['Cuantitativo','Cualitativo','Mixto','Panel','Rastreo','Misterioso','Otro'].map(t=><option key={t} value={t}>{t}</option>)}
-                </select>
+                <label className="text-xs font-medium text-gray-500">🔬 Tipo de estudio <span className="text-gray-400 font-normal">(registrado en Ventas)</span></label>
+                <div className="border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 text-sm font-medium text-gray-800">
+                  {form.tipo_estudio||<span className="text-gray-400 italic">No especificado</span>}
+                </div>
               </div>
+              {/* Cliente — viene de Ventas, solo lectura */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-600">Empresa</label>
-                <select value={form.empresa||'SERTA'} onChange={e=>setForm(f=>({...f,empresa:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
-                  <option>SERTA</option><option>SERTA MR</option><option>GIPA</option><option>Otra</option>
-                </select>
+                <label className="text-xs font-medium text-gray-500">🏢 Cliente <span className="text-gray-400 font-normal">(registrado en Ventas)</span></label>
+                <div className="border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 text-sm font-medium text-gray-800">
+                  {sel.cliente?.nombre||<span className="text-gray-400 italic">Sin cliente asignado</span>}
+                </div>
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-gray-600">Status / Activo</label>
