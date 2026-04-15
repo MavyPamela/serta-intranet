@@ -469,7 +469,7 @@ function Dashboard({user}){
         sb.from('proyectos').select('id',{count:'exact',head:true}).eq('estatus','En Progreso'),
         sb.from('clientes').select('id',{count:'exact',head:true}).eq('activo',true),
         sb.from('empleados').select('nombre,fecha_nacimiento,foto_url').eq('activo',true).not('fecha_nacimiento','is',null),
-        canAprobar?sb.from('requisiciones').select('id,numero_requisicion,descripcion,total_pago,proyectos(nombre),proveedores(nombre),creador:empleados!requisiciones_creado_por_fkey(nombre)').eq('status','Pendiente').eq('director_id',user.id).order('created_at',{ascending:false}).limit(10):{data:[]},
+        canAprobar?sb.from('requisiciones').select('id,numero_requisicion,descripcion,total_pago,creado_por,proyectos(nombre),proveedores(nombre)').eq('status','Pendiente').eq('director_id',user.id).order('created_at',{ascending:false}).limit(10):{data:[]},
       ]);
       const cumples=(cb.data||[]).filter(e=>{
         if(!e.fecha_nacimiento)return false;
@@ -526,7 +526,7 @@ function Dashboard({user}){
                     <span className="text-sm font-medium text-gray-800">{r.proyectos?.nombre||'—'}</span>
                   </div>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {r.proveedores?.nombre||'—'} · Solicitado por {r.creador?.nombre||'—'}
+                    {r.proveedores?.nombre||'—'}
                   </p>
                 </div>
                 <div className="text-right">
@@ -1909,7 +1909,7 @@ function VentasModule({user}){
   const load=useCallback(async()=>{
     setLoading(true);
     const{data:d}=await sb.from('proyectos')
-      .select('*, cliente:clientes(nombre,razon_social), creador:empleados!proyectos_created_by_fkey(nombre)')
+      .select('*, cliente:clientes(nombre,razon_social)')
       .order('numero_proyecto',{ascending:false});
     setData(d||[]);setLoading(false);
   },[]);
@@ -2150,7 +2150,7 @@ function VentasModule({user}){
                 ['💳 No. de pagos',sel.num_pagos||'—'],
                 ['📅 Inicio venta',sel.fecha_inicio_venta?fmtD(sel.fecha_inicio_venta):'—'],
                 ['🚀 Inicio proyecto',sel.fecha_inicio_proyecto?fmtD(sel.fecha_inicio_proyecto):'—'],
-                ['👤 Registrado por',sel.creador?.nombre||'—'],
+                ['👤 Registrado por',empleados.find(e=>e.id===sel.created_by)?.nombre||'—'],
               ].map(([k,v])=>(
                 <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
               ))}
@@ -2365,13 +2365,13 @@ function ProyectosModule({user}){
   const canCreate=user.rol==='Administrador'||user.perm_proyectos;
   const canActivate=user.rol==='Administrador'||user.perm_autorizar_proyectos;
   const isAdmin=user.rol==='Administrador';
-  const isPM=(p)=>p&&(p.pm_id===user.id||isAdmin);
+  const isPM=(p)=>p&&(String(p.pm_id)===String(user.id)||isAdmin);
 
   const PROJ_STATUS=['Prospecto','Activo','Cerrado','Cancelado'];
   const load=useCallback(async()=>{
     setLoading(true);
     const{data:d}=await sb.from('proyectos')
-      .select('*, cliente:clientes(nombre), pm:empleados!proyectos_pm_id_fkey(nombre,foto_url)')
+      .select('*, cliente:clientes(nombre)')
       .in('status',['Prospecto','Activo','Cerrado','Cancelado','Autorizado'])
       .order('numero_proyecto',{ascending:false});
     setData(d||[]);setLoading(false);
@@ -2478,7 +2478,7 @@ function ProyectosModule({user}){
   const exportReqExcel=async(proyecto)=>{
     try{
       const{data:reqs,error}=await sb.from('requisiciones')
-        .select('numero_requisicion,tipo,descripcion,observaciones,subtotal,iva,ret_iva,ret_isr,total_pago,status,fecha_autorizacion,fecha_pago,created_at,proveedores(nombre),director:empleados!requisiciones_director_id_fkey(nombre)')
+        .select('numero_requisicion,tipo,descripcion,observaciones,subtotal,iva,ret_iva,ret_isr,total_pago,status,director_id,fecha_autorizacion,fecha_pago,created_at,proveedores(nombre)')
         .eq('proyecto_id',proyecto.id)
         .order('numero_requisicion',{ascending:true});
       if(error)throw error;
@@ -2495,7 +2495,7 @@ function ProyectosModule({user}){
         'Ret. ISR':parseFloat(r.ret_isr)||0,
         'Total a Pagar':parseFloat(r.total_pago)||0,
         'Status':r.status||'',
-        'Director':r.director?.nombre||'—',
+        'Director':r.director_id||'—',
         'Fecha Creación':r.created_at?new Date(r.created_at).toLocaleDateString('es-MX'):'',
         'Fecha Autorización':r.fecha_autorizacion?new Date(r.fecha_autorizacion).toLocaleDateString('es-MX'):'',
         'Fecha Pago':r.fecha_pago?new Date(r.fecha_pago).toLocaleDateString('es-MX'):'',
@@ -2643,12 +2643,12 @@ function ProyectosModule({user}){
                 </div>
               );
             })()}
-            {sel.pm&&(
+            {sel.pm_id&&(()=>{const pm=empleados.find(e=>e.id===sel.pm_id);return pm?(
               <div className="bg-blue-50 rounded-xl p-3 flex items-center gap-3">
-                <Avatar nombre={sel.pm.nombre} foto_url={sel.pm.foto_url}/>
-                <div><p className="text-xs text-gray-500">Project Manager</p><p className="text-sm font-semibold text-gray-800">{sel.pm.nombre}</p></div>
+                <Avatar nombre={pm.nombre} foto_url={pm.foto_url}/>
+                <div><p className="text-xs text-gray-500">Project Manager</p><p className="text-sm font-semibold text-gray-800">{pm.nombre}</p></div>
               </div>
-            )}
+            ):null;})()}
             {colabs.length>0&&(
               <div>
                 <p className="text-xs font-semibold text-gray-600 mb-2">👥 Equipo del proyecto</p>
@@ -2708,7 +2708,7 @@ function ProyectosModule({user}){
         <Modal title={`Equipo — ${sel.nombre}`} onClose={()=>setModal(null)} size="md">
           <div className="space-y-4">
             <div className="bg-blue-50 rounded-xl p-3 flex items-center gap-3">
-              {sel.pm&&<><Avatar nombre={sel.pm.nombre} foto_url={sel.pm.foto_url}/><div><p className="text-xs text-gray-500">Project Manager</p><p className="text-sm font-semibold">{sel.pm.nombre}</p></div></>}
+              {sel.pm_id&&(()=>{const pm=empleados.find(e=>e.id===sel.pm_id);return pm?<><Avatar nombre={pm.nombre} foto_url={pm.foto_url}/><div><p className="text-xs text-gray-500">Project Manager</p><p className="text-sm font-semibold">{pm.nombre}</p></div></>:null;})()}
             </div>
             <div>
               <p className="text-xs font-semibold text-gray-600 mb-2">Agregar colaborador</p>
@@ -3372,8 +3372,8 @@ function ExportReqBtn({proyectos,rows}){
         'Ret. ISR':parseFloat(r.ret_isr)||0,
         'Total a Pagar':parseFloat(r.total_pago)||0,
         'Status':r.status||'',
-        'Director':r.director?.nombre||'—',
-        'Creado por':r.creador?.nombre||'—',
+        'Director':eNom(r.director_id),
+        'Creado por':eNom(r.creado_por),
         'Fecha Creación':r.created_at?new Date(r.created_at).toLocaleDateString('es-MX'):'',
         'Fecha Autorización':r.fecha_autorizacion?new Date(r.fecha_autorizacion).toLocaleDateString('es-MX'):'',
         'Fecha Pago':r.fecha_pago?new Date(r.fecha_pago).toLocaleDateString('es-MX'):'',
@@ -3424,6 +3424,8 @@ function RequisicionesModule({user}){
   const[proveedores,setProveedores]=useState([]);
   const[directores,setDirectores]=useState([]);
   const[actividades,setActividades]=useState([]);
+  const[empMap,setEmpMap]  =useState({});
+  const eNom=id=>empMap[String(id)]||'—';
   const[loading,setLoading]=useState(true);
   const[modal,setModal]    =useState(null);
   const[sel,setSel]        =useState(null);
@@ -3453,9 +3455,7 @@ function RequisicionesModule({user}){
         fecha_envio,fecha_autorizacion,fecha_pago,motivo_cancelacion,
         eval_score,eval_areas,eval_otro,eval_fecha,created_at,
         proyectos(id,nombre,numero_proyecto,cliente:clientes(nombre)),
-        proveedores(id,nombre,email,regimen_fiscal),
-        director:empleados!requisiciones_director_id_fkey(id,nombre),
-        creador:empleados!requisiciones_creado_por_fkey(id,nombre)
+        proveedores(id,nombre,email,regimen_fiscal,tipo_comprobante)
       `).order('created_at',{ascending:false}),
       sb.from('proyectos').select('id,numero_proyecto,nombre,empresa').in('status',['Activo','Cerrado','Prospecto','Autorizado']).order('numero_proyecto',{ascending:false}),
       sb.from('proveedores').select('id,nombre,email,regimen_fiscal,tipo_comprobante').eq('activo',true).order('nombre'),
@@ -3466,7 +3466,9 @@ function RequisicionesModule({user}){
     setRows(canAll?all:all.filter(r=>String(r.creado_por)===String(user.id)));
     setProyectos(proy||[]);
     setProveedores(provs||[]);
-    setDirectores((dirs||[]).filter(d=>d.rol==='Administrador'||d.rol==='Director'));
+    const todosEmp=dirs||[];
+    setDirectores(todosEmp.filter(d=>d.rol==='Administrador'||d.rol==='Director'));
+    setEmpMap(todosEmp.reduce((m,e)=>{m[String(e.id)]=e.nombre;return m;},{}));
     setActividades((acts||[]).map(a=>a.nombre));
     setLoading(false);
   },[canAll,user.id]);
@@ -3710,7 +3712,7 @@ SERTA de México`
                   </td>
                   <td className="px-4 py-3 text-gray-600">{r.proveedores?.nombre||'—'}</td>
                   <td className="px-3 py-3 text-center hidden md:table-cell"><Badge text={r.tipo} color={r.tipo==='Viáticos'?'orange':r.tipo==='Anticipos'?'purple':'blue'}/></td>
-                  <td className="px-3 py-3 text-center text-xs text-gray-500 hidden lg:table-cell">{r.director?.nombre||'—'}</td>
+                  <td className="px-3 py-3 text-center text-xs text-gray-500 hidden lg:table-cell">{eNom(r.director_id)}</td>
                   <td className="px-4 py-3 text-right font-mono font-bold text-gray-800">{fmt(r.total_pago)}</td>
                   <td className="px-3 py-3 text-center"><Badge text={r.status} color={REQ_STATUS_COLOR[r.status]||'gray'}/></td>
                   <td className="px-3 py-3">
@@ -3841,8 +3843,8 @@ SERTA de México`
               <div><p className="text-xs text-gray-500">Proyecto</p><p className="font-medium">{sel.proyectos?.nombre||'—'}</p><p className="text-xs text-gray-400">#{sel.proyectos?.numero_proyecto}</p></div>
               <div><p className="text-xs text-gray-500">Cliente</p><p className="font-medium">{sel.proyectos?.cliente?.nombre||'—'}</p></div>
               <div><p className="text-xs text-gray-500">Proveedor</p><p className="font-medium">{sel.proveedores?.nombre||'—'}</p><p className="text-xs text-gray-400">{REGIMENES[sel.proveedores?.tipo_comprobante||sel.proveedores?.regimen_fiscal]?.label||''}</p></div>
-              <div><p className="text-xs text-gray-500">Director autorizador</p><p className="font-medium">{sel.director?.nombre||'—'}</p></div>
-              <div><p className="text-xs text-gray-500">Registrado por</p><p className="font-medium">{sel.creador?.nombre||'—'}</p></div>
+              <div><p className="text-xs text-gray-500">Director autorizador</p><p className="font-medium">{eNom(sel.director_id)}</p></div>
+              <div><p className="text-xs text-gray-500">Registrado por</p><p className="font-medium">{eNom(sel.creado_por)}</p></div>
               <div><p className="text-xs text-gray-500">Fecha</p><p className="font-medium">{fmtD(sel.created_at?.split('T')[0])}</p></div>
             </div>
             {sel.descripcion&&<div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-1">Descripción</p><p className="text-sm">{sel.descripcion}</p></div>}
