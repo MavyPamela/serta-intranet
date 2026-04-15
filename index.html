@@ -2012,10 +2012,16 @@ function VentasModule({user}){
   };
 
   const autorizarVenta=async(p)=>{
-    if(!confirm(`¿Autorizar "${p.nombre}"?\nEl proyecto pasará al módulo de Proyectos para asignar PM y ejecutarse.`))return;
-    const{error}=await sb.rpc('fn_autorizar_venta',{p_proyecto_id:p.id});
-    if(error){alert('Error: '+error.message);return;}
+    if(!confirm(`¿Autorizar "${p.nombre}"?\nEl proyecto pasará al módulo de Proyectos.`))return;
+    // Intentar RPC primero; si falla, hacer update directo
+    const{error:rpcErr}=await sb.rpc('fn_autorizar_venta',{p_proyecto_id:p.id});
+    if(rpcErr){
+      // Fallback: pasar a 'Prospecto' para que aparezca en cola de Proyectos
+      const{error:updErr}=await sb.from('proyectos').update({status:'Prospecto',updated_at:new Date().toISOString()}).eq('id',p.id);
+      if(updErr){alert('Error al autorizar: '+updErr.message);return;}
+    }
     await load();
+    alert('✅ Proyecto autorizado.\n\nAparece ahora en Proyectos con status "Prospecto".\nEl Director puede asignar PM y activarlo desde ese módulo.');
   };
 
   const marcarPerdido=async e=>{
@@ -2103,9 +2109,9 @@ function VentasModule({user}){
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
                         <Btn size="sm" color="outline" onClick={()=>{setSel(p);setModal('ver');}}>Ver</Btn>
-                        {(canCreate||isAdmin)&&p.status==='En venta'&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);setForm({...p,cliente_id:p.cliente_id||'',contacto_id:p.contacto_cliente_id||''});setMsg('');if(p.cliente_id){const{data:cx}=await sb.from('contactos').select('id,nombre,puesto,email,telefono').eq('cliente_id',p.cliente_id).order('es_principal',{ascending:false});setContactosCliente(cx||[]);}else{setContactosCliente([]);}setModal('editar');}}>Editar</Btn>}
-                        {canAuthorize&&p.status==='En venta'&&<Btn size="sm" color="green" onClick={()=>autorizarVenta(p)}>Autorizar ✓</Btn>}
-                        {(canCreate||isAdmin)&&p.status==='En venta'&&<Btn size="sm" color="red" onClick={()=>{setSel(p);setNotasPerdido('');setMsg('');setModal('perder');}}>Perdido</Btn>}
+                        {(canCreate||isAdmin)&&!['Autorizado','Activo','Cerrado','Perdido','Cancelado'].includes(p.status)&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);setForm({...p,cliente_id:p.cliente_id||'',contacto_id:p.contacto_cliente_id||''});setMsg('');if(p.cliente_id){const{data:cx}=await sb.from('contactos').select('id,nombre,puesto,email,telefono').eq('cliente_id',p.cliente_id).order('es_principal',{ascending:false});setContactosCliente(cx||[]);}else{setContactosCliente([]);}setModal('editar');}}>Editar</Btn>}
+                        {canAuthorize&&!['Autorizado','Activo','Cerrado','Perdido','Cancelado'].includes(p.status)&&<Btn size="sm" color="green" onClick={()=>autorizarVenta(p)}>Autorizar ✓</Btn>}
+                        {(canCreate||isAdmin)&&!['Autorizado','Activo','Cerrado','Perdido','Cancelado'].includes(p.status)&&<Btn size="sm" color="red" onClick={()=>{setSel(p);setNotasPerdido('');setMsg('');setModal('perder');}}>Perdido</Btn>}
                       </div>
                     </td>
                   </tr>
@@ -2404,7 +2410,7 @@ function ProyectosModule({user}){
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        {[['Prospectos','Prospecto','yellow','🔍'],['Activos','Activo','green','▶️'],['Cerrados','Cerrado','blue','✅'],['Cancelados','Cancelado','red','❌']].map(([lbl,st,col,ic])=>(
+        {[['Por activar','Prospecto','yellow','🔍'],['Activos','Activo','green','▶️'],['Cerrados','Cerrado','blue','✅'],['Cancelados','Cancelado','red','❌']].map(([lbl,st,col,ic])=>(
           <div key={st} onClick={()=>setFStatus(fStatus===st?'':st)} className={`rounded-2xl p-4 border-2 cursor-pointer transition ${fStatus===st?'border-gray-100 bg-white':'border-gray-100 bg-white hover:border-gray-200'}`} style={fStatus===st?{borderColor:'#00b5b5',background:'rgba(0,181,181,0.07)'}:{}}>
             <div className="flex items-center justify-between"><span className="text-sm text-gray-500">{lbl}</span><span>{ic}</span></div>
             <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor(st)}</p>
@@ -2448,10 +2454,10 @@ function ProyectosModule({user}){
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
                         <Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadColabs(p.id);setModal('ver');}}>Ver</Btn>
-                        {canActivate&&p.status==='Prospecto'&&<Btn size="sm" color="green" onClick={()=>{setSel(p);setForm({pm_id:''});setMsg('');setModal('activar');}}>Activar</Btn>}
+                        {canActivate&&(p.status==='Prospecto'||p.status==='Autorizado')&&<Btn size="sm" color="green" onClick={()=>{setSel(p);setForm({pm_id:''});setMsg('');setModal('activar');}}>Activar</Btn>}
                         {(isPM(p)||isAdmin)&&p.status==='Activo'&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadColabs(p.id);setModal('colabs');}}>Equipo</Btn>}
                         {(isPM(p)||isAdmin)&&p.status==='Activo'&&<Btn size="sm" color="blue" onClick={()=>cerrarProyecto(p)}>Cerrar</Btn>}
-                        {canActivate&&p.status==='Prospecto'&&<Btn size="sm" color="red" onClick={()=>cancelarProyecto(p)}>Cancelar</Btn>}
+                        {canActivate&&(p.status==='Prospecto'||p.status==='Autorizado')&&<Btn size="sm" color="red" onClick={()=>cancelarProyecto(p)}>Cancelar</Btn>}
                       </div>
                     </td>
                   </tr>
@@ -3223,7 +3229,7 @@ function RequisicionesModule({user}){
         creador:empleados!requisiciones_creado_por_fkey(id,nombre)
       `).order('created_at',{ascending:false}),
       sb.from('proyectos').select('id,numero_proyecto,nombre,empresa').in('status',['Activo','Cerrado','Prospecto']).order('numero_proyecto',{ascending:false}),
-      sb.from('proveedores').select('id,nombre,email,regimen_fiscal,tipo_persona').eq('activo',true).order('nombre'),
+      sb.from('proveedores').select('id,nombre,email,regimen_fiscal,tipo_comprobante').eq('activo',true).order('nombre'),
       sb.from('empleados').select('id,nombre,rol').eq('activo',true).order('nombre'),
       sb.from('actividades_proveedor').select('nombre').eq('activo',true).order('orden'),
     ]);
