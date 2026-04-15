@@ -469,7 +469,7 @@ function Dashboard({user}){
         sb.from('proyectos').select('id',{count:'exact',head:true}).eq('estatus','En Progreso'),
         sb.from('clientes').select('id',{count:'exact',head:true}).eq('activo',true),
         sb.from('empleados').select('nombre,fecha_nacimiento,foto_url').eq('activo',true).not('fecha_nacimiento','is',null),
-        canAprobar?sb.from('requisiciones').select('id,numero_requisicion,descripcion,total_pago,creado_por,proyectos(nombre),proveedores(nombre)').eq('status','Pendiente').eq('director_id',user.id).order('created_at',{ascending:false}).limit(10):{data:[]},
+        canAprobar?sb.from('requisiciones').select('id,numero_requisicion,descripcion,total_pago,creado_por,proyecto_id,proveedor_id').eq('status','Pendiente').eq('director_id',user.id).order('created_at',{ascending:false}).limit(10):{data:[]},
       ]);
       const cumples=(cb.data||[]).filter(e=>{
         if(!e.fecha_nacimiento)return false;
@@ -523,11 +523,9 @@ function Dashboard({user}){
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-bold text-orange-700">#{r.numero_requisicion}</span>
-                    <span className="text-sm font-medium text-gray-800">{r.proyectos?.nombre||'—'}</span>
+                    <span className="text-sm font-medium text-gray-800">{r.descripcion||'—'}</span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {r.proveedores?.nombre||'—'}
-                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">Requisición #{r.numero_requisicion}</p>
                 </div>
                 <div className="text-right">
                   <p className="font-bold text-gray-800">{fmt(r.total_pago)}</p>
@@ -2360,6 +2358,7 @@ function ProyectosModule({user}){
   const[colabs,setColabs]=useState([]);
   const[saving,setSaving]=useState(false);
   const[msg,setMsg]=useState('');
+  const[pagos,setPagos]=useState([]);
 
   // permisos
   const canCreate=user.rol==='Administrador'||user.perm_proyectos;
@@ -2388,6 +2387,28 @@ function ProyectosModule({user}){
       .select('id,empleado_id,rol,empleado:empleados(nombre,foto_url,puesto)')
       .eq('proyecto_id',pid);
     setColabs(c||[]);
+  };
+
+  const loadPagos=async(pid)=>{
+    const{data:p}=await sb.from('proyecto_pagos')
+      .select('*').eq('proyecto_id',pid).order('numero_pago',{ascending:true});
+    setPagos(p||[]);
+  };
+
+  const savePagos=async(pid,rows)=>{
+    await sb.from('proyecto_pagos').delete().eq('proyecto_id',pid);
+    if(rows.length>0){
+      const inserts=rows.map((r,i)=>({
+        proyecto_id:pid,
+        numero_pago:i+1,
+        numero_factura:r.numero_factura||'',
+        estatus:r.estatus||'Pendiente',
+        importe_sin_iva:parseFloat(r.importe_sin_iva)||0,
+        fecha_factura:r.fecha_factura||null,
+        fecha_cobro:r.fecha_cobro||null,
+      }));
+      await sb.from('proyecto_pagos').insert(inserts);
+    }
   };
 
   const filt=useMemo(()=>(data||[]).filter(p=>{
@@ -2471,8 +2492,25 @@ function ProyectosModule({user}){
         fecha_inicio_proyecto: form.fecha_inicio_proyecto||null,
         notas:        form.notas||'',
         pm_id:        form.pm_id?parseInt(form.pm_id):null,
+        estudio_gipa: !!form.estudio_gipa,
+        costos_operativos_reales:  form.costos_operativos_reales?parseFloat(form.costos_operativos_reales):0,
+        compensacion_pms:          form.compensacion_pms?parseFloat(form.compensacion_pms):0,
+        pct_comision_venta:        form.pct_comision_venta?parseFloat(form.pct_comision_venta):0,
+        pct_comision_operacion:    form.pct_comision_operacion?parseFloat(form.pct_comision_operacion):0,
+        comentarios_pm:            form.comentarios_pm||'',
+        briefing_objetivo:         form.briefing_objetivo||'',
+        briefing_metodologia:      form.briefing_metodologia_np?'':form.briefing_metodologia||'',
+        briefing_metodologia_np:   !!form.briefing_metodologia_np,
+        briefing_preguntas:        form.briefing_preguntas_np?'':form.briefing_preguntas||'',
+        briefing_preguntas_np:     !!form.briefing_preguntas_np,
+        briefing_presup_cliente:   form.briefing_presup_cliente_np?'':form.briefing_presup_cliente||'',
+        briefing_presup_cliente_np:!!form.briefing_presup_cliente_np,
+        briefing_tiempo:           form.briefing_tiempo_np?'':form.briefing_tiempo||'',
+        briefing_tiempo_np:        !!form.briefing_tiempo_np,
+        updated_at: new Date().toISOString(),
       }).eq('id',sel.id);
       if(error)throw error;
+      await savePagos(sel.id, pagos);
       setMsg('✅ Proyecto actualizado');
       await load();
       setTimeout(()=>{setModal(null);setMsg('');},1000);
@@ -2501,16 +2539,24 @@ function ProyectosModule({user}){
 
   const exportReqExcel=async(proyecto)=>{
     try{
-      const{data:reqs,error}=await sb.from('requisiciones')
-        .select('numero_requisicion,tipo,descripcion,observaciones,subtotal,iva,ret_iva,ret_isr,total_pago,status,director_id,fecha_autorizacion,fecha_pago,created_at,proveedores(nombre)')
-        .eq('proyecto_id',proyecto.id)
-        .order('numero_requisicion',{ascending:true});
+      const[
+        {data:reqs,error},
+        {data:provs}
+      ]=await Promise.all([
+        sb.from('requisiciones')
+          .select('numero_requisicion,tipo,descripcion,observaciones,subtotal,iva,ret_iva,ret_isr,total_pago,status,proveedor_id,director_id,fecha_autorizacion,fecha_pago,created_at')
+          .eq('proyecto_id',proyecto.id)
+          .order('numero_requisicion',{ascending:true}),
+        sb.from('proveedores').select('id,nombre').eq('activo',true)
+      ]);
       if(error)throw error;
       if(!reqs||reqs.length===0){alert('Este proyecto no tiene requisiciones registradas.');return;}
+      const provMap=(provs||[]).reduce((m,p)=>{m[String(p.id)]=p.nombre;return m;},{});
+      const empNom=id=>(empleados||[]).find(e=>String(e.id)===String(id))?.nombre||'—';
       const rows=reqs.map(r=>({
         'No. Req':r.numero_requisicion||'—',
         'Tipo':r.tipo||'Normal',
-        'Proveedor':r.proveedores?.nombre||'—',
+        'Proveedor':provMap[String(r.proveedor_id)]||'—',
         'Descripción':r.descripcion||'',
         'Observaciones':r.observaciones||'',
         'Subtotal':parseFloat(r.subtotal)||0,
@@ -2519,7 +2565,7 @@ function ProyectosModule({user}){
         'Ret. ISR':parseFloat(r.ret_isr)||0,
         'Total a Pagar':parseFloat(r.total_pago)||0,
         'Status':r.status||'',
-        'Director':r.director_id||'—',
+        'Director':empNom(r.director_id),
         'Fecha Creación':r.created_at?new Date(r.created_at).toLocaleDateString('es-MX'):'',
         'Fecha Autorización':r.fecha_autorizacion?new Date(r.fecha_autorizacion).toLocaleDateString('es-MX'):'',
         'Fecha Pago':r.fecha_pago?new Date(r.fecha_pago).toLocaleDateString('es-MX'):'',
@@ -2602,7 +2648,7 @@ function ProyectosModule({user}){
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
                         <Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadColabs(p.id);setModal('ver');}}>Ver</Btn>
-                        {(isPM(p)||isAdmin||canActivate)&&['Activo','Prospecto','Autorizado'].includes(p.status)&&<Btn size="sm" color="outline" onClick={()=>{setSel(p);setForm({...p,pm_id:p.pm_id||'',importe:p.importe||'',costo_final:p.costo_final||''});setMsg('');setModal('editar');}}>✏️ Editar</Btn>}
+                        {(isPM(p)||isAdmin||canActivate)&&['Activo','Prospecto','Autorizado'].includes(p.status)&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);setForm({...p,pm_id:p.pm_id||'',importe:p.importe||'',costo_final:p.costo_final||'',costos_operativos_reales:p.costos_operativos_reales||'',compensacion_pms:p.compensacion_pms||'',pct_comision_venta:p.pct_comision_venta||'',pct_comision_operacion:p.pct_comision_operacion||'',comentarios_pm:p.comentarios_pm||'',estudio_gipa:!!p.estudio_gipa,briefing_objetivo:p.briefing_objetivo||'',briefing_metodologia:p.briefing_metodologia||'',briefing_metodologia_np:!!p.briefing_metodologia_np,briefing_preguntas:p.briefing_preguntas||'',briefing_preguntas_np:!!p.briefing_preguntas_np,briefing_presup_cliente:p.briefing_presup_cliente||'',briefing_presup_cliente_np:!!p.briefing_presup_cliente_np,briefing_tiempo:p.briefing_tiempo||'',briefing_tiempo_np:!!p.briefing_tiempo_np});await loadPagos(p.id);setMsg('');setModal('editar');}}>✏️ Editar</Btn>}
                         {canActivate&&(p.status==='Prospecto'||p.status==='Autorizado')&&<Btn size="sm" color="green" onClick={()=>{setSel(p);setForm({pm_id:''});setMsg('');setModal('activar');}}>Activar</Btn>}
                         {(isPM(p)||isAdmin)&&p.status==='Activo'&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadColabs(p.id);setModal('colabs');}}>Equipo</Btn>}
                         {(isPM(p)||isAdmin)&&p.status==='Activo'&&<Btn size="sm" color="blue" onClick={()=>cerrarProyecto(p)}>Cerrar</Btn>}
@@ -2705,13 +2751,39 @@ function ProyectosModule({user}){
       )}
 
       {/* ── Modal EDITAR proyecto ── */}
-      {modal==='editar'&&sel&&(
+      {modal==='editar'&&sel&&(()=>{
+        const imp=parseFloat(form.importe)||0;
+        const presupOp=imp*0.33;
+        const costOp=parseFloat(form.costos_operativos_reales)||0;
+        const compPM=parseFloat(form.compensacion_pms)||0;
+        const pctCV=parseFloat(form.pct_comision_venta)||0;
+        const pctCO=parseFloat(form.pct_comision_operacion)||0;
+        const comV=imp*(pctCV/100);
+        const comO=imp*(pctCO/100);
+        const totalCom=comV+comO;
+        const totalGasto=costOp+compPM+totalCom;
+        const margen=imp-totalGasto;
+        const rentab=imp>0?((margen/imp)*100).toFixed(2):'0.00';
+        const fmtN=v=>v.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+        const addPago=()=>setPagos(ps=>[...ps,{numero_factura:'',estatus:'Pendiente',importe_sin_iva:'',fecha_factura:'',fecha_cobro:''}]);
+        const updPago=(i,k,v)=>setPagos(ps=>ps.map((r,idx)=>idx===i?{...r,[k]:v}:r));
+        const delPago=(i)=>setPagos(ps=>ps.filter((_,idx)=>idx!==i));
+        return(
         <Modal title={`Editar — ${sel.nombre}`} onClose={()=>setModal(null)} size="xl">
-          <form onSubmit={editarProyecto} className="space-y-4">
+          <form onSubmit={editarProyecto} className="space-y-5">
+
+            {/* ── Datos generales ── */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input label="Nombre del proyecto" value={form.nombre||''} onChange={v=>setForm(f=>({...f,nombre:v}))} required className="md:col-span-2"/>
+              <Input label="Nombre del proyecto *" value={form.nombre||''} onChange={v=>setForm(f=>({...f,nombre:v}))} required className="md:col-span-2"/>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-gray-600">Tipo de estudio</label>
+                <label className="text-xs font-medium text-gray-600">Project Manager</label>
+                <select value={form.pm_id||''} onChange={e=>setForm(f=>({...f,pm_id:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
+                  <option value="">— Sin asignar —</option>
+                  {empleados.map(e=><option key={e.id} value={e.id}>{e.nombre}{e.puesto?' · '+e.puesto:''}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Tipo de estudio *</label>
                 <select value={form.tipo_estudio||''} onChange={e=>setForm(f=>({...f,tipo_estudio:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
                   {['Cuantitativo','Cualitativo','Mixto','Panel','Rastreo','Misterioso','Otro'].map(t=><option key={t} value={t}>{t}</option>)}
                 </select>
@@ -2719,54 +2791,189 @@ function ProyectosModule({user}){
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-gray-600">Empresa</label>
                 <select value={form.empresa||'SERTA'} onChange={e=>setForm(f=>({...f,empresa:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
-                  <option>SERTA</option><option>SERTA MR</option><option>Otra</option>
+                  <option>SERTA</option><option>SERTA MR</option><option>GIPA</option><option>Otra</option>
                 </select>
               </div>
-              <Input label="Año fiscal" type="number" value={form.anio_fiscal||''} onChange={v=>setForm(f=>({...f,anio_fiscal:v}))}/>
-              <Input label="No. de pagos" type="number" min="1" value={form.num_pagos||1} onChange={v=>setForm(f=>({...f,num_pagos:v}))}/>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Status / Activo</label>
+                <select value={form.status||''} onChange={e=>setForm(f=>({...f,status:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
+                  {['Prospecto','Autorizado','Activo','Cerrado','Cancelado'].map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <Input label="No. de pagos *" type="number" min="1" value={form.num_pagos||1} onChange={v=>setForm(f=>({...f,num_pagos:v}))}/>
+              <Input label="Año fiscal *" type="number" value={form.anio_fiscal||''} onChange={v=>setForm(f=>({...f,anio_fiscal:v}))}/>
               <Input label="Fecha inicio venta" type="date" value={form.fecha_inicio_venta||''} onChange={v=>setForm(f=>({...f,fecha_inicio_venta:v}))}/>
               <Input label="Fecha inicio proyecto" type="date" value={form.fecha_inicio_proyecto||''} onChange={v=>setForm(f=>({...f,fecha_inicio_proyecto:v}))}/>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Importe sin IVA *</label>
+                <input type="number" min="0" step="0.01" value={form.importe||''} onChange={e=>setForm(f=>({...f,importe:e.target.value}))} placeholder="0.00" className="border border-gray-300 rounded-xl px-3 py-2 text-sm"/>
+              </div>
+              <div className="flex items-center gap-2 pt-5">
+                <input type="checkbox" id="chkGipa" checked={!!form.estudio_gipa} onChange={e=>setForm(f=>({...f,estudio_gipa:e.target.checked}))} className="w-4 h-4 accent-teal-600"/>
+                <label htmlFor="chkGipa" className="text-sm text-gray-700 font-medium cursor-pointer">Estudio GIPA</label>
+              </div>
             </div>
 
-            {/* Financiero */}
+            {/* ── Tabla de Pagos ── */}
+            <div className="rounded-xl border border-gray-200 overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 border-b border-gray-200 flex items-center justify-between">
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">💳 Pagos</p>
+                <button type="button" onClick={addPago} className="text-xs px-3 py-1 rounded-lg text-white font-medium" style={{background:'#00b5b5'}}>+ Agregar pago</button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead><tr className="bg-gray-50 border-b border-gray-100">
+                    <th className="px-3 py-2 text-left font-semibold text-gray-500 w-10">No.</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-500">No. Factura</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-500">Estatus *</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-500">Importe s/IVA *</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-500">Fecha factura</th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-500">Fecha cobro</th>
+                    <th className="px-2 py-2 w-8"></th>
+                  </tr></thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {pagos.length===0&&<tr><td colSpan={7} className="px-4 py-3 text-center text-gray-400 text-xs">Sin pagos registrados — haz clic en "+ Agregar pago"</td></tr>}
+                    {pagos.map((p,i)=>(
+                      <tr key={i} className="hover:bg-gray-50/50">
+                        <td className="px-3 py-1.5 text-gray-500 font-mono">{i+1}</td>
+                        <td className="px-2 py-1"><input type="text" value={p.numero_factura||''} onChange={e=>updPago(i,'numero_factura',e.target.value)} placeholder="— —" className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-teal-300"/></td>
+                        <td className="px-2 py-1">
+                          <select value={p.estatus||'Pendiente'} onChange={e=>updPago(i,'estatus',e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-teal-300">
+                            {['Pendiente','Facturado','Cobrado','Cancelado'].map(s=><option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1"><input type="number" step="0.01" value={p.importe_sin_iva||''} onChange={e=>updPago(i,'importe_sin_iva',e.target.value)} placeholder="0.00" className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-teal-300"/></td>
+                        <td className="px-2 py-1"><input type="date" value={p.fecha_factura||''} onChange={e=>updPago(i,'fecha_factura',e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-teal-300"/></td>
+                        <td className="px-2 py-1"><input type="date" value={p.fecha_cobro||''} onChange={e=>updPago(i,'fecha_cobro',e.target.value)} className="w-full border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-teal-300"/></td>
+                        <td className="px-2 py-1"><button type="button" onClick={()=>delPago(i)} className="text-red-400 hover:text-red-600 font-bold text-sm">×</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* ── Información Financiera ── */}
             <div className="rounded-xl border-2 border-teal-100 bg-teal-50/40 p-4">
-              <p className="text-xs font-bold text-teal-700 uppercase tracking-wide mb-3">💵 Información financiera</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <p className="text-xs font-bold text-teal-700 uppercase tracking-wide mb-4">💵 Información Financiera</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-600">Importe de venta (s/IVA)</label>
-                  <input type="number" min="0" step="0.01" value={form.importe||''} onChange={e=>setForm(f=>({...f,importe:e.target.value}))} placeholder="0.00" className="border border-gray-300 rounded-xl px-3 py-2 text-sm"/>
+                  <label className="text-xs font-medium text-gray-500">Presupuesto operativos (33%)</label>
+                  <div className="flex items-center gap-1 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
+                    <span className="text-gray-500 text-xs">$</span>
+                    <span className="text-sm font-semibold text-gray-700">{fmtN(presupOp)}</span>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-600">Costo final del proyecto</label>
-                  <input type="number" min="0" step="0.01" value={form.costo_final||''} onChange={e=>setForm(f=>({...f,costo_final:e.target.value}))} placeholder="0.00" className="border border-gray-300 rounded-xl px-3 py-2 text-sm"/>
+                  <label className="text-xs font-medium text-gray-600">Costos operativos reales</label>
+                  <div className="flex items-center gap-1 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+                    <span className="text-gray-400 text-xs">$</span>
+                    <input type="number" min="0" step="0.01" value={form.costos_operativos_reales||''} onChange={e=>setForm(f=>({...f,costos_operativos_reales:e.target.value}))} placeholder="0.00" className="w-full text-sm bg-transparent outline-none"/>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Compensación PMs</label>
+                  <div className="flex items-center gap-1 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+                    <span className="text-gray-400 text-xs">$</span>
+                    <input type="number" min="0" step="0.01" value={form.compensacion_pms||''} onChange={e=>setForm(f=>({...f,compensacion_pms:e.target.value}))} placeholder="0.00" className="w-full text-sm bg-transparent outline-none"/>
+                  </div>
+                </div>
+                <div/>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">% Comisión de venta</label>
+                  <div className="flex items-center gap-1 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+                    <input type="number" min="0" step="0.01" value={form.pct_comision_venta||''} onChange={e=>setForm(f=>({...f,pct_comision_venta:e.target.value}))} placeholder="0.00" className="w-full text-sm bg-transparent outline-none"/>
+                    <span className="text-gray-400 text-xs">%</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500">Comisión de venta</label>
+                  <div className="flex items-center gap-1 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
+                    <span className="text-gray-500 text-xs">$</span>
+                    <span className="text-sm font-semibold text-gray-700">{fmtN(comV)}</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">% Comisión de operación</label>
+                  <div className="flex items-center gap-1 border border-gray-300 rounded-xl px-3 py-2 bg-white">
+                    <input type="number" min="0" step="0.01" value={form.pct_comision_operacion||''} onChange={e=>setForm(f=>({...f,pct_comision_operacion:e.target.value}))} placeholder="0.00" className="w-full text-sm bg-transparent outline-none"/>
+                    <span className="text-gray-400 text-xs">%</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500">Comisión de operación</label>
+                  <div className="flex items-center gap-1 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
+                    <span className="text-gray-500 text-xs">$</span>
+                    <span className="text-sm font-semibold text-gray-700">{fmtN(comO)}</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500">Total comisión</label>
+                  <div className="flex items-center gap-1 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
+                    <span className="text-gray-500 text-xs">$</span>
+                    <span className="text-sm font-semibold text-gray-700">{fmtN(totalCom)}</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500">Total gasto</label>
+                  <div className="flex items-center gap-1 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
+                    <span className="text-gray-500 text-xs">$</span>
+                    <span className="text-sm font-semibold text-gray-700">{fmtN(totalGasto)}</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500">Margen después de directos</label>
+                  <div className="flex items-center gap-1 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
+                    <span className="text-gray-500 text-xs">$</span>
+                    <span className={`text-sm font-semibold ${margen>=0?'text-green-600':'text-red-500'}`}>{fmtN(margen)}</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-500">Rentabilidad directos</label>
+                  <div className="flex items-center gap-1 border border-gray-200 rounded-xl px-3 py-2 bg-gray-50">
+                    <span className={`text-sm font-semibold ${parseFloat(rentab)>=0?'text-green-600':'text-red-500'}`}>{rentab}</span>
+                    <span className="text-gray-500 text-xs">%</span>
+                  </div>
                 </div>
               </div>
-              {(form.importe||form.costo_final)&&(()=>{
-                const ing=parseFloat(form.importe)||0;
-                const cos=parseFloat(form.costo_final)||0;
-                const mar=ing-cos;
-                const pct=ing>0?((mar/ing)*100).toFixed(1):null;
-                const color=mar>=0?'#10b981':'#ef4444';
-                return mar||cos?(
-                  <div className="mt-3 flex gap-4 text-sm">
-                    <span className="text-gray-500">Margen: <strong style={{color}}>{fmt(mar)}{pct?` (${pct}%)`:''}</strong></span>
+              <div className="mt-3 flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Comentarios</label>
+                <textarea value={form.comentarios_pm||''} onChange={e=>setForm(f=>({...f,comentarios_pm:e.target.value}))} rows={2} className="border border-gray-300 rounded-xl px-3 py-2 text-sm resize-none" placeholder="Comentarios sobre el proyecto..."/>
+              </div>
+            </div>
+
+            {/* ── Notas internas ── */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">📝 Notas internas</label>
+              <textarea value={form.notas||''} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} rows={2} className="border border-gray-300 rounded-xl px-3 py-2 text-sm resize-none" placeholder="Observaciones internas..."/>
+            </div>
+
+            {/* ── Briefing ── */}
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/30 p-4">
+              <p className="text-xs font-bold text-indigo-700 uppercase tracking-wide mb-4">📋 Briefing</p>
+              <div className="space-y-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Objetivo *</label>
+                  <input type="text" value={form.briefing_objetivo||''} onChange={e=>setForm(f=>({...f,briefing_objetivo:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm" placeholder="Objetivo del estudio..."/>
+                </div>
+                {[
+                  ['Metodología','briefing_metodologia','briefing_metodologia_np'],
+                  ['Preguntas a responder','briefing_preguntas','briefing_preguntas_np'],
+                  ['Presupuesto Cliente','briefing_presup_cliente','briefing_presup_cliente_np'],
+                  ['Tiempo','briefing_tiempo','briefing_tiempo_np'],
+                ].map(([lbl,key,npKey])=>(
+                  <div key={key} className="flex items-center gap-3">
+                    <div className="flex-1 flex flex-col gap-1">
+                      <label className="text-xs font-medium text-gray-600">{lbl}</label>
+                      <input type="text" value={form[key]||''} disabled={!!form[npKey]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} className={`border border-gray-300 rounded-xl px-3 py-2 text-sm ${form[npKey]?'bg-gray-100 text-gray-400':''}`} placeholder="—"/>
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-5 shrink-0">
+                      <input type="checkbox" id={`np_${key}`} checked={!!form[npKey]} onChange={e=>setForm(f=>({...f,[npKey]:e.target.checked,[key]:e.target.checked?'':f[key]}))} className="w-4 h-4 accent-indigo-500"/>
+                      <label htmlFor={`np_${key}`} className="text-xs text-gray-500 cursor-pointer whitespace-nowrap">No provisto</label>
+                    </div>
                   </div>
-                ):null;
-              })()}
-            </div>
-
-            {/* PM */}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">👤 Project Manager</label>
-              <select value={form.pm_id||''} onChange={e=>setForm(f=>({...f,pm_id:e.target.value}))} className="border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
-                <option value="">— Sin asignar —</option>
-                {empleados.map(e=><option key={e.id} value={e.id}>{e.nombre}{e.puesto?' · '+e.puesto:''}</option>)}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">📝 Notas</label>
-              <textarea value={form.notas||''} onChange={e=>setForm(f=>({...f,notas:e.target.value}))} rows={3} className="border border-gray-300 rounded-xl px-3 py-2 text-sm resize-none" placeholder="Observaciones, detalles del proyecto..."/>
+                ))}
+              </div>
             </div>
 
             {msg&&<p className="text-sm rounded-lg px-3 py-2 bg-gray-50">{msg}</p>}
@@ -2776,7 +2983,8 @@ function ProyectosModule({user}){
             </div>
           </form>
         </Modal>
-      )}
+        );
+      })()}
 
       {/* ── Modal ACTIVAR (Director asigna PM) ── */}
       {modal==='activar'&&sel&&(
@@ -3448,7 +3656,8 @@ const REQ_STATUS_COLOR={Pendiente:'blue',Autorizada:'green','Pago en proceso':'o
 const AREAS_OPT=['Calidad en el trabajo entregado','Precio adecuado','Disponibilidad y posibilidad de contactarlo','Puntualidad en entrega'];
 
 /* ── Botón para exportar requisiciones de un proyecto a Excel ── */
-function ExportReqBtn({proyectos,rows}){
+function ExportReqBtn({proyectos,proveedores,rows}){
+  const pv=id=>(proveedores||[]).find(x=>String(x.id)===String(id))?.nombre||'—';
   const[proy,setProy]=useState('');
   const[exp,setExp]=useState(false);
   const doExport=()=>{
@@ -3462,7 +3671,7 @@ function ExportReqBtn({proyectos,rows}){
       const data=reqs.map(r=>({
         'No. Req':r.numero_requisicion||'—',
         'Tipo':r.tipo||'Normal',
-        'Proveedor':r.proveedores?.nombre||'—',
+        'Proveedor':pv(r.proveedor_id),
         'Descripción':r.descripcion||'',
         'Observaciones':r.observaciones||'',
         'Subtotal':parseFloat(r.subtotal)||0,
@@ -3524,7 +3733,11 @@ function RequisicionesModule({user}){
   const[directores,setDirectores]=useState([]);
   const[actividades,setActividades]=useState([]);
   const[empMap,setEmpMap]  =useState({});
-  const eNom=id=>empMap[String(id)]||'—';
+  const eNom =id=>empMap[String(id)]||'—';
+  const pNom =id=>{const p=proyectos.find(x=>String(x.id)===String(id));return p?`${p.nombre}`:'—';};
+  const pNum =id=>{const p=proyectos.find(x=>String(x.id)===String(id));return p?.numero_proyecto||'';};
+  const provNom=id=>{const p=proveedores.find(x=>String(x.id)===String(id));return p?.nombre||'—';};
+  const provReg=id=>{const p=proveedores.find(x=>String(x.id)===String(id));return p?.regimen_fiscal||'';};
   const[loading,setLoading]=useState(true);
   const[modal,setModal]    =useState(null);
   const[sel,setSel]        =useState(null);
@@ -3560,9 +3773,7 @@ function RequisicionesModule({user}){
           'id,numero_requisicion,proyecto_id,proveedor_id,director_id,creado_por,tipo,'+
           'descripcion,observaciones,subtotal,iva,ret_iva,ret_isr,total_pago,status,'+
           'fecha_envio,fecha_autorizacion,fecha_pago,motivo_cancelacion,'+
-          'eval_score,eval_areas,eval_otro,eval_fecha,created_at,'+
-          'proyectos(id,nombre,numero_proyecto),'+
-          'proveedores(id,nombre,email,regimen_fiscal)'
+          'eval_score,eval_areas,eval_otro,eval_fecha,created_at'
         ).order('created_at',{ascending:false}),
         sb.from('proyectos').select('id,numero_proyecto,nombre,empresa').in('status',['Activo','Cerrado','Prospecto','Autorizado']).order('numero_proyecto',{ascending:false}),
         sb.from('proveedores').select('id,nombre,email,regimen_fiscal').eq('activo',true).order('nombre'),
@@ -3599,7 +3810,7 @@ function RequisicionesModule({user}){
     const base=tab==='mis'?misReqs:tab==='autorizar'?porAutorizar:rows;
     if(!search)return base;
     const q=search.toLowerCase();
-    return base.filter(r=>(r.proyectos?.nombre||'').toLowerCase().includes(q)||String(r.numero_requisicion).includes(q)||(r.proveedores?.nombre||'').toLowerCase().includes(q));
+    return base.filter(r=>pNom(r.proyecto_id).toLowerCase().includes(q)||String(r.numero_requisicion).includes(q)||provNom(r.proveedor_id).toLowerCase().includes(q));
   },[tab,rows,misReqs,porAutorizar,search]);
 
   // Recalcular impuestos al cambiar items o proveedor
@@ -3799,7 +4010,7 @@ SERTA de México`
       {/* Búsqueda + Export */}
       <div className="flex gap-2 mb-4 flex-wrap">
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar por folio, proyecto o proveedor..." className="flex-1 min-w-48 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"/>
-        {canAll&&<ExportReqBtn proyectos={proyectos} rows={rows}/>}
+        {canAll&&<ExportReqBtn proyectos={proyectos} proveedores={proveedores} rows={rows}/>}
       </div>
 
       {/* Tabla */}
@@ -3824,10 +4035,10 @@ SERTA de México`
                 <tr key={r.id} className="hover:bg-gray-50/70 transition">
                   <td className="px-4 py-3 font-mono text-gray-700 font-medium">#{r.numero_requisicion}</td>
                   <td className="px-4 py-3">
-                    <p className="font-medium text-gray-800">{r.proyectos?.nombre||'—'}</p>
-                    <p className="text-xs text-gray-400">{r.proyectos?.cliente?.nombre||''}</p>
+                    <p className="font-medium text-gray-800">{pNom(r.proyecto_id)}</p>
+                    <p className="text-xs text-gray-400">{pNum(r.proyecto_id)?`#${pNum(r.proyecto_id)}`:''}</p>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{r.proveedores?.nombre||'—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{provNom(r.proveedor_id)}</td>
                   <td className="px-3 py-3 text-center hidden md:table-cell"><Badge text={r.tipo} color={r.tipo==='Viáticos'?'orange':r.tipo==='Anticipos'?'purple':'blue'}/></td>
                   <td className="px-3 py-3 text-center text-xs text-gray-500 hidden lg:table-cell">{eNom(r.director_id)}</td>
                   <td className="px-4 py-3 text-right font-mono font-bold text-gray-800">{fmt(r.total_pago)}</td>
@@ -3957,9 +4168,9 @@ SERTA de México`
               <Badge text={sel.tipo} color={sel.tipo==='Viáticos'?'orange':sel.tipo==='Anticipos'?'purple':'blue'}/>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-              <div><p className="text-xs text-gray-500">Proyecto</p><p className="font-medium">{sel.proyectos?.nombre||'—'}</p><p className="text-xs text-gray-400">#{sel.proyectos?.numero_proyecto}</p></div>
-              <div><p className="text-xs text-gray-500">Cliente</p><p className="font-medium">{sel.proyectos?.cliente?.nombre||'—'}</p></div>
-              <div><p className="text-xs text-gray-500">Proveedor</p><p className="font-medium">{sel.proveedores?.nombre||'—'}</p><p className="text-xs text-gray-400">{REGIMENES[sel.proveedores?.tipo_comprobante||sel.proveedores?.regimen_fiscal]?.label||''}</p></div>
+              <div><p className="text-xs text-gray-500">Proyecto</p><p className="font-medium">{pNom(sel.proyecto_id)}</p><p className="text-xs text-gray-400">{pNum(sel.proyecto_id)?`#${pNum(sel.proyecto_id)}`:''}</p></div>
+              <div><p className="text-xs text-gray-500">Régimen fiscal</p><p className="font-medium">{REGIMENES[provReg(sel.proveedor_id)]?.label||'—'}</p></div>
+              <div><p className="text-xs text-gray-500">Proveedor</p><p className="font-medium">{provNom(sel.proveedor_id)}</p></div>
               <div><p className="text-xs text-gray-500">Director autorizador</p><p className="font-medium">{eNom(sel.director_id)}</p></div>
               <div><p className="text-xs text-gray-500">Registrado por</p><p className="font-medium">{eNom(sel.creado_por)}</p></div>
               <div><p className="text-xs text-gray-500">Fecha</p><p className="font-medium">{fmtD(sel.created_at?.split('T')[0])}</p></div>
@@ -4062,8 +4273,8 @@ SERTA de México`
         <Modal title="Autorizar requisición" onClose={()=>setModal(null)} size="md">
           <div className="space-y-4">
             <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-              <p className="font-medium text-green-800">#{sel.numero_requisicion} — {sel.proyectos?.nombre}</p>
-              <p className="text-sm text-green-700 mt-1">Proveedor: {sel.proveedores?.nombre}</p>
+              <p className="font-medium text-green-800">#{sel.numero_requisicion} — {pNom(sel.proyecto_id)}</p>
+              <p className="text-sm text-green-700 mt-1">Proveedor: {provNom(sel.proveedor_id)}</p>
               <p className="text-sm font-bold text-green-800 mt-2">Importe de pago: {fmt(sel.total_pago)}</p>
             </div>
             <div className="flex justify-end gap-2">
@@ -4080,7 +4291,7 @@ SERTA de México`
         <Modal title="Cancelar requisición" onClose={()=>setModal(null)} size="md">
           <div className="space-y-4">
             <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-              <p className="text-sm text-red-800">Requisición #{sel.numero_requisicion} · {sel.proyectos?.nombre}</p>
+              <p className="text-sm text-red-800">Requisición #{sel.numero_requisicion} · {pNom(sel.proyecto_id)}</p>
             </div>
             <Textarea label="Motivo de cancelación" value={cancelNota} onChange={setCancelNota} placeholder="Explica por qué se cancela esta requisición..." rows={3}/>
             <div className="flex justify-end gap-2">
@@ -4096,8 +4307,8 @@ SERTA de México`
         <Modal title="Actualizar status de pago" onClose={()=>setModal(null)} size="md">
           <div className="space-y-4">
             <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-              <p className="font-medium text-purple-800">#{sel.numero_requisicion} — {sel.proyectos?.nombre}</p>
-              <p className="text-sm text-purple-700">Proveedor: {sel.proveedores?.nombre}</p>
+              <p className="font-medium text-purple-800">#{sel.numero_requisicion} — {pNom(sel.proyecto_id)}</p>
+              <p className="text-sm text-purple-700">Proveedor: {provNom(sel.proveedor_id)}</p>
               <p className="font-bold text-purple-800 mt-2">Importe: {fmt(sel.total_pago)}</p>
             </div>
             <div className="flex justify-end gap-2">
