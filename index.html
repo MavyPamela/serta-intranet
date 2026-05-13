@@ -1918,14 +1918,21 @@ function VentasModule({user}){
   const canCreate=user.rol==='Administrador'||user.perm_ventas||user.perm_proyectos;
   const canAuthorize=user.rol==='Administrador'||user.perm_autorizar_proyectos;
   const isAdmin=user.rol==='Administrador';
+  const canSeeAllVentas=isAdmin||canAuthorize;
+  const[fVendedores,setFVendedores]=useState([]);
 
   const load=useCallback(async()=>{
     setLoading(true);
-    const{data:d}=await sb.from('proyectos')
+    let q=sb.from('proyectos')
       .select('*, cliente:clientes(nombre,razon_social)')
       .order('numero_proyecto',{ascending:false});
+    // Vendedor solo ve sus propios proyectos
+    if(!canSeeAllVentas){
+      q=q.or(`vendedor_id.eq.${user.id},created_by.eq.${user.id}`);
+    }
+    const{data:d}=await q;
     setData(d||[]);setLoading(false);
-  },[]);
+  },[canSeeAllVentas,user.id]);
 
   useEffect(()=>{
     load();
@@ -1941,8 +1948,10 @@ function VentasModule({user}){
     if(fStatus==='pipeline') matchS=PIPELINE_STATUSES.includes(p.status);
     else if(fStatus==='Autorizado') matchS=p.status==='Autorizado'||p.status==='Activo';
     else if(fStatus) matchS=p.status===fStatus;
-    return matchQ&&matchS;
-  }),[data,search,fStatus]);
+    // Filtro multi-vendedor (solo para admins/directores)
+    const matchV=fVendedores.length===0||fVendedores.includes(String(p.vendedor_id));
+    return matchQ&&matchS&&matchV;
+  }),[data,search,fStatus,fVendedores]);
 
   const efNuevo={nombre:'',cliente_id:'',cliente_nuevo_nombre:'',contacto_id:'',vendedor_id:String(user.id),estado_venta:'Venta',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:'',flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false};
   const ESTADOS_VENTA=['Venta','En espera de autorización','Autorizado','Cancelado'];
@@ -2104,8 +2113,29 @@ function VentasModule({user}){
         <button onClick={()=>setFStatus('Cancelado')} className="text-xs px-3 py-1.5 rounded-full border transition" style={fStatus==='Cancelado'?{background:'#6b7280',color:'white',borderColor:'#6b7280'}:{borderColor:'#e5e7eb',color:'#6b7280'}}>Cancelados</button>
       </div>
 
-      {/* Buscador */}
-      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar nombre, folio, cliente..." className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 mb-4"/>
+      {/* Buscador + filtro vendedor */}
+      <div className="flex flex-wrap gap-2 mb-4 items-start">
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar nombre, folio, cliente..." className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 flex-1 min-w-48"/>
+        {canSeeAllVentas&&(
+          <div className="flex flex-col gap-1">
+            <div className="flex flex-wrap gap-1">
+              {empleados.map(e=>{
+                const v=String(e.id);
+                const sel=fVendedores.includes(v);
+                return(
+                  <button key={v} type="button"
+                    onClick={()=>setFVendedores(prev=>sel?prev.filter(x=>x!==v):[...prev,v])}
+                    className="px-2.5 py-1 rounded-lg text-xs font-medium border transition"
+                    style={sel?{background:'#00b5b5',color:'#fff',borderColor:'#00b5b5'}:{background:'#f9fafb',color:'#6b7280',borderColor:'#e5e7eb'}}>
+                    {e.nombre.split(' ')[0]}
+                  </button>
+                );
+              })}
+              {fVendedores.length>0&&<button type="button" onClick={()=>setFVendedores([])} className="px-2 py-1 rounded-lg text-xs border" style={{color:'#ef4444',borderColor:'#fca5a5'}}>✕ Limpiar</button>}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Tabla */}
       {loading?<Spin/>:filt.length===0?<Empty msg="Sin proyectos en pipeline"/>:(
@@ -3387,7 +3417,7 @@ function ComisionesModule({user}){
   // Filtros
   const[fAnio,setFAnio]=useState('');
   const[fEmpresa,setFEmpresa]=useState('');
-  const[fVendedor,setFVendedor]=useState('');
+  const[fVendedores,setFVendedores]=useState([]);
   const[fMeses,setFMeses]=useState([]);
 
   // Form
@@ -3451,7 +3481,7 @@ function ComisionesModule({user}){
     return rows.filter(r=>{
       if(fAnio&&String(r.anio_fiscal)!==fAnio)return false;
       if(fEmpresa&&r.empresa!==fEmpresa)return false;
-      if(fVendedor&&String(r.vendedor_id)!==fVendedor)return false;
+      if(fVendedores.length>0&&!fVendedores.includes(String(r.vendedor_id)))return false;
       if(fMeses.length>0&&!fMeses.includes(String(r.mes_cierre)))return false;
       return true;
     });
@@ -3596,11 +3626,50 @@ function ComisionesModule({user}){
         </div>
       </div>
 
+      {/* Mini dashboard de KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        {[
+          {label:'Proyectos',val:filtered.length,icon:'📁',color:'#00b5b5'},
+          {label:'Com. Ventas',val:fmt(filtered.reduce((s,r)=>s+(r.com_final_ventas||0),0)),icon:'💲',color:'#f59e0b'},
+          {label:'Com. PM',val:fmt(filtered.reduce((s,r)=>s+(r.com_final_pm||0),0)),icon:'👤',color:'#8b5cf6'},
+          {label:'MSD Total',val:fmt(filtered.reduce((s,r)=>s+(r.msd_final||0),0)),icon:'📊',color:'#10b981'},
+        ].map(({label,val,icon,color})=>(
+          <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-gray-500 font-medium">{label}</span>
+              <span>{icon}</span>
+            </div>
+            <p className="text-xl font-bold" style={{color}}>{val}</p>
+          </div>
+        ))}
+      </div>
+
       {/* Filtros */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5 flex flex-wrap gap-3 items-end">
         <Sel label="Año fiscal" value={fAnio} onChange={setFAnio} options={[{value:'',label:'Todos'}, ...anios.map(a=>({value:a,label:a}))]}/>
         <Sel label="Empresa" value={fEmpresa} onChange={setFEmpresa} options={[{value:'',label:'Todas'},{value:'SERTA',label:'SERTA'},{value:'GIPA',label:'GiPA'}]}/>
-        {canSeeAll&&<Sel label="Vendedor" value={fVendedor} onChange={setFVendedor} options={[{value:'',label:'Todos'},...usuarios.map(u=>({value:String(u.id),label:u.nombre}))]}/>}
+        {canSeeAll&&(
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Vendedor {fVendedores.length>0&&<span className="text-teal-600 font-bold">({fVendedores.length} sel.)</span>}
+            </label>
+            <div className="flex flex-wrap gap-1">
+              {usuarios.map(u=>{
+                const v=String(u.id);
+                const sel=fVendedores.includes(v);
+                return(
+                  <button key={v} type="button"
+                    onClick={()=>setFVendedores(prev=>sel?prev.filter(x=>x!==v):[...prev,v])}
+                    className="px-2 py-1 rounded-lg text-xs font-medium border transition"
+                    style={sel?{background:'#00b5b5',color:'#fff',borderColor:'#00b5b5'}:{background:'#f9fafb',color:'#6b7280',borderColor:'#e5e7eb'}}>
+                    {u.nombre.split(' ')[0]}
+                  </button>
+                );
+              })}
+              {fVendedores.length>0&&<button type="button" onClick={()=>setFVendedores([])} className="px-2 py-1 rounded-lg text-xs border" style={{color:'#ef4444',borderColor:'#fca5a5'}}>✕</button>}
+            </div>
+          </div>
+        )}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
             Mes {fMeses.length>0&&<span className="text-teal-600 font-bold">({fMeses.length} sel.)</span>}
@@ -3620,7 +3689,7 @@ function ComisionesModule({user}){
             })}
           </div>
         </div>
-        <Btn color="gray" size="sm" onClick={()=>{setFAnio('');setFEmpresa('');setFVendedor('');setFMeses([]);}}>Limpiar</Btn>
+        <Btn color="gray" size="sm" onClick={()=>{setFAnio('');setFEmpresa('');setFVendedores([]);setFMeses([]);}}>Limpiar</Btn>
       </div>
 
       {/* KPI Cards */}
