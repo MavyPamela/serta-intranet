@@ -2037,16 +2037,18 @@ function VentasModule({user}){
 
   const confirmarAutorizacion=async()=>{
     if(!sel)return;
+    // Validar que tenga cliente asignado
+    if(!sel.cliente_id){
+      setMsg('❌ Debes asignar un cliente al proyecto antes de autorizarlo.');
+      return;
+    }
     setSaving(true);setMsg('');
-    const upd={status:'Prospecto'};
-    if(pmSelId) upd.pm_id=parseInt(pmSelId);
-    const{error}=await sb.from('proyectos').update(upd).eq('id',sel.id);
-    if(error){setMsg('❌ '+error.message);setSaving(false);return;}
+    const{data:estudio,error}=await sb.rpc('fn_autorizar_venta',{p_proyecto_id:sel.id});
+    if(error){setMsg('❌ '+(error.message||'Error al autorizar'));setSaving(false);return;}
     await load();
     setSaving(false);
     setModal(null);
-    const pmNombre=pmSelId?empleados.find(e=>String(e.id)===pmSelId)?.nombre:'(sin asignar)';
-    alert(`✅ Proyecto autorizado.\n\nPM asignado: ${pmNombre}\nAparece en Proyectos con status "Prospecto".\nDesde ahí se puede activar y generar el número de estudio.`);
+    alert(`✅ Proyecto autorizado.\n\nNúmero de estudio: ${estudio}\nAparece en Proyectos con status "Autorizado".\nEl Director podrá asignar el PM desde el módulo Proyectos.`);
   };
 
   const marcarPerdido=async e=>{
@@ -2194,7 +2196,7 @@ function VentasModule({user}){
       {(modal==='nuevo'||modal==='editar')&&(
         <Modal title={modal==='nuevo'?'Nuevo proyecto en pipeline':'Editar proyecto'} onClose={()=>setModal(null)} size="xl">
           <form onSubmit={modal==='nuevo'?crearProyecto:editarProyecto}>
-            {modal==='nuevo'&&<p className="text-xs text-gray-400 mb-4 bg-purple-50 rounded-xl px-3 py-2">Se asignará un folio automáticamente. El número de estudio se genera cuando el Director lo active en Proyectos.</p>}
+            {modal==='nuevo'&&<p className="text-xs text-gray-400 mb-4 bg-purple-50 rounded-xl px-3 py-2">Se asignará un folio automáticamente. El número de estudio se genera al momento de autorizar la venta. El Director asignará el PM desde el módulo Proyectos.</p>}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <Input label="Nombre del proyecto" value={form.nombre||''} onChange={v=>setForm(f=>({...f,nombre:v}))} required className="md:col-span-2"/>
 
@@ -2281,11 +2283,10 @@ function VentasModule({user}){
         </Modal>
       )}
 
-      {/* ── Modal AUTORIZAR → asignar PM ── */}
+      {/* ── Modal AUTORIZAR ── */}
       {modal==='autorizar'&&sel&&(
-        <Modal title="Autorizar proyecto" onClose={()=>setModal(null)} size="md">
+        <Modal title="Autorizar venta" onClose={()=>setModal(null)} size="md">
           <div className="space-y-5">
-            {/* Info del proyecto */}
             <div className="rounded-xl p-4 border-2 border-green-200 bg-green-50">
               <p className="text-xs text-green-600 font-bold uppercase tracking-wide mb-1">Proyecto a autorizar</p>
               <p className="font-semibold text-gray-800 text-base">{sel.nombre}</p>
@@ -2296,38 +2297,22 @@ function VentasModule({user}){
               </div>
             </div>
 
-            {/* Selector de PM */}
-            <div>
-              <label className="text-xs font-semibold text-gray-600 block mb-1.5">
-                👤 Project Manager asignado <span className="font-normal text-gray-400">(opcional — puedes asignarlo después desde Proyectos)</span>
-              </label>
-              <select
-                value={pmSelId}
-                onChange={e=>setPmSelId(e.target.value)}
-                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-200"
-              >
-                <option value="">— Sin asignar por ahora —</option>
-                {empleados.map(e=>(
-                  <option key={e.id} value={e.id}>{e.nombre}{e.puesto?' · '+e.puesto:''}</option>
-                ))}
-              </select>
-              {pmSelId&&(
-                <p className="text-xs text-green-700 mt-1.5 bg-green-50 rounded-lg px-3 py-1.5">
-                  ✅ <strong>{empleados.find(e=>String(e.id)===pmSelId)?.nombre}</strong> verá este proyecto en su módulo de Proyectos.
-                </p>
-              )}
-            </div>
-
-            {/* Nota informativa */}
-            <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700">
-              <p>📋 Al autorizar, el proyecto pasa a <strong>Proyectos</strong> con status <strong>"Prospecto"</strong>. Desde ahí se puede activar, generar el número de estudio y asignar o cambiar el PM en cualquier momento.</p>
-            </div>
+            {!sel.cliente_id?(
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-xs text-red-700">
+                <p className="font-bold mb-1">⚠️ Cliente requerido</p>
+                <p>Este proyecto no tiene un cliente asignado. Edítalo primero y selecciona o crea el cliente antes de autorizar.</p>
+              </div>
+            ):(
+              <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700">
+                <p>✅ Al autorizar se generará el <strong>número de estudio</strong> y el proyecto aparecerá en <strong>Proyectos</strong> con status <strong>"Autorizado"</strong>. El Director asignará el PM desde ahí.</p>
+              </div>
+            )}
 
             {msg&&<p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{msg}</p>}
 
             <div className="flex justify-end gap-2 pt-1">
               <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
-              <Btn color="green" onClick={confirmarAutorizacion} disabled={saving}>
+              <Btn color="green" onClick={confirmarAutorizacion} disabled={saving||!sel.cliente_id}>
                 {saving?'Autorizando...':'✅ Autorizar proyecto'}
               </Btn>
             </div>
@@ -2378,18 +2363,30 @@ function ProyectosModule({user}){
   // permisos
   const canCreate=user.rol==='Administrador'||user.perm_proyectos;
   const canActivate=user.rol==='Administrador'||user.perm_autorizar_proyectos;
-  const isAdmin=user.rol==='Administrador';
+  const isAdmin=user.rol==='Administrador'||user.rol==='Director'||user.perm_autorizar_proyectos;
   const isPM=(p)=>p&&(String(p.pm_id)===String(user.id)||isAdmin);
 
-  const PROJ_STATUS=['Prospecto','Activo','Cerrado','Cancelado'];
+  const PROJ_STATUS=['Autorizado','Activo','Cerrado','Cancelado'];
   const load=useCallback(async()=>{
     setLoading(true);
-    const{data:d}=await sb.from('proyectos')
+    let query=sb.from('proyectos')
       .select('*, cliente:clientes(nombre)')
-      .in('status',['Prospecto','Activo','Cerrado','Cancelado','Autorizado'])
+      .in('status',['Autorizado','Activo','Cerrado','Cancelado'])
       .order('numero_proyecto',{ascending:false});
+
+    // Control de acceso: si no es admin/director, solo ve sus proyectos
+    if(!isAdmin){
+      const{data:colabs}=await sb.from('proyecto_colaboradores')
+        .select('proyecto_id').eq('empleado_id',user.id);
+      const colabIds=(colabs||[]).map(c=>c.proyecto_id);
+      let orFilter=`created_by.eq.${user.id},pm_id.eq.${user.id}`;
+      if(colabIds.length>0) orFilter+=`,id.in.(${colabIds.join(',')})`;
+      query=query.or(orFilter);
+    }
+
+    const{data:d}=await query;
     setData(d||[]);setLoading(false);
-  },[]);
+  },[isAdmin,user.id]);
 
   useEffect(()=>{
     load();
@@ -2467,19 +2464,11 @@ function ProyectosModule({user}){
     e.preventDefault();setSaving(true);setMsg('');
     try{
       const pmId=parseInt(form.pm_id);
-      // Intentar RPC (genera numero_estudio automático)
-      const{data:r,error:rpcErr}=await sb.rpc('fn_activar_proyecto',{p_proyecto_id:sel.id,p_pm_id:pmId});
-      if(rpcErr){
-        // Fallback directo: activar sin generar número de estudio (se puede agregar manualmente)
-        const{error:updErr}=await sb.from('proyectos').update({
-          status:'Activo',
-          pm_id:pmId,
-        }).eq('id',sel.id);
-        if(updErr)throw updErr;
-        setMsg('✅ Proyecto activado y PM asignado.');
-      }else{
-        setMsg(`✅ Proyecto activado. No. de estudio: ${r}`);
-      }
+      if(!pmId)throw new Error('Debes seleccionar un Project Manager.');
+      const{error}=await sb.rpc('fn_activar_proyecto',{p_proyecto_id:sel.id,p_pm_id:pmId});
+      if(error)throw error;
+      const pmNombre=empleados.find(e=>String(e.id)===String(pmId))?.nombre||'PM';
+      setMsg(`✅ PM asignado: ${pmNombre}. Proyecto ahora Activo.`);
       await load();
       setTimeout(()=>{setModal(null);setMsg('');},1400);
     }catch(er){setMsg('❌ '+(er.message||'Error'));}
