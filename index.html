@@ -4489,4 +4489,300 @@ SERTA de México`
       {/* Tabs */}
       <div className="flex gap-2 mb-4 border-b border-gray-200">
         {[['mis','Mis requisiciones'],canAprobar&&['autorizar',`Por autorizar${porAutorizar.length?` (${porAutorizar.length})`:''}` ],canAll&&['todas','Todas']].filter(Boolean).map(([id,label])=>(
-          <button key={id} onClick={()=>setTab(id)} cl
+          <button key={id} onClick={()=>setTab(id)} clv,icon,col])=>{
+          const cc={blue:'#3b82f6',orange:'#f59e0b',green:'#10b981',purple:'#8b5cf6'};
+          return(<div key={t} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+            <div className="flex items-center justify-between mb-1"><span className="text-xs text-gray-500">{t}</span><span className="text-lg">{icon}</span></div>
+            <p className="text-2xl font-bold" style={{color:cc[col]}}>{v}</p>
+          </div>);
+        })}
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-2 mb-3 flex-wrap">
+        {[['mis','Mis requisiciones'],['autorizar','Por autorizar'],['todas','Todas']].map(([id,lbl])=>(
+          <button key={id} onClick={()=>setTab(id)} className="text-xs px-3 py-1.5 rounded-full border transition"
+            style={tab===id?{background:'#1a252f',color:'white',borderColor:'#1a252f'}:{borderColor:'#e5e7eb',color:'#6b7280'}}>{lbl}</button>
+        ))}
+      </div>
+
+      {/* Search */}
+      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Buscar requisición, proyecto, proveedor..."
+        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 mb-4"/>
+
+      {/* Tabla */}
+      {filt.length===0?<Empty msg="Sin requisiciones con estos filtros"/>:(
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="bg-gray-50 border-b border-gray-100">
+                <th className="px-4 py-3 text-left">#Req</th>
+                <th className="px-4 py-3 text-left">Tipo</th>
+                <th className="px-4 py-3 text-left hidden md:table-cell">Proyecto</th>
+                <th className="px-4 py-3 text-left hidden md:table-cell">Proveedor</th>
+                <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3 text-center">Status</th>
+                <th className="px-4 py-3 text-right">Acciones</th>
+              </tr></thead>
+              <tbody className="divide-y divide-gray-50">
+                {filt.map(r=>{
+                  const sc=r.status==='Pendiente'?'orange':r.status==='Autorizada'?'blue':r.status==='Pago en proceso'?'purple':r.status==='Pagada'?'green':r.status==='Cancelada'?'red':'gray';
+                  return(<tr key={r.id} className="hover:bg-gray-50/70 transition">
+                    <td className="px-4 py-3 font-mono font-bold text-gray-700">#{r.numero_requisicion}</td>
+                    <td className="px-4 py-3"><Badge text={r.tipo||'Normal'} color="gray"/></td>
+                    <td className="px-4 py-3 hidden md:table-cell text-gray-600 text-xs">{pNom(r.proyecto_id)||'—'}</td>
+                    <td className="px-4 py-3 hidden md:table-cell text-gray-600 text-xs">{provNom(r.proveedor_id)||'—'}</td>
+                    <td className="px-4 py-3 text-right font-mono font-bold text-gray-800">{fmt(r.total_pago)}</td>
+                    <td className="px-4 py-3 text-center"><Badge text={r.status} color={sc}/></td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1 flex-wrap">
+                        <Btn size="sm" color="outline" onClick={()=>openView(r)}>Ver</Btn>
+                        {(canAll||user.perm_finanzas)&&(r.status==='Autorizada'||r.status==='Pago en proceso')&&(
+                          <Btn size="sm" color="outline" onClick={()=>{setSel(r);setModal('pago');}}>💳 Pago</Btn>
+                        )}
+                        {canAprobar&&r.status==='Pendiente'&&(
+                          <><Btn size="sm" color="green" onClick={()=>{setSel(r);setModal('autorizar');}}>✓</Btn>
+                          <Btn size="sm" color="red" onClick={()=>{setSel(r);setCancelNota('');setModal('rechazar');}}>✗</Btn></>
+                        )}
+                        {(String(r.creado_por)===String(user.id)||canAll)&&r.status==='Pendiente'&&(
+                          <Btn size="sm" color="red" onClick={()=>{setSel(r);setCancelNota('');setModal('cancelar');}}>Cancelar</Btn>
+                        )}
+                      </div>
+                    </td>
+                  </tr>);
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Modal VER */}
+      {modal==='ver'&&sel&&(
+        <Modal title={`Requisición #${sel.numero_requisicion}`} onClose={()=>{setModal(null);setSel(null);}} size="xl">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {[['Proyecto',pNom(sel.proyecto_id)],['Proveedor',provNom(sel.proveedor_id)],['Tipo',sel.tipo],
+                ['Status',sel.status],['Total a Pagar',fmt(sel.total_pago)],['Creado por',eNom(sel.creado_por)]
+              ].map(([k,v])=>(
+                <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v||'—'}</p></div>
+              ))}
+            </div>
+            {sel.descripcion&&<div className="bg-blue-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-1">Descripción</p><p className="text-sm">{sel.descripcion}</p></div>}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[['Subtotal',fmt(sel.subtotal)],['IVA',fmt(sel.iva)],['Ret.IVA',fmt(sel.ret_iva)],['Ret.ISR',fmt(sel.ret_isr)]].map(([k,v])=>(
+                <div key={k} className="bg-gray-50 rounded-xl p-2 text-center"><p className="text-xs text-gray-500">{k}</p><p className="font-mono font-bold text-sm">{v}</p></div>
+              ))}
+            </div>
+            {sel.items&&sel.items.length>0&&(
+              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead><tr className="bg-gray-50 border-b"><th className="px-3 py-2 text-left">Actividad</th><th className="px-3 py-2 text-center">Cant.</th><th className="px-3 py-2 text-right">P.Unit.</th><th className="px-3 py-2 text-right">Total</th></tr></thead>
+                  <tbody>{sel.items.map((it,i)=>(
+                    <tr key={i} className="border-b last:border-0"><td className="px-3 py-2">{it.actividad_nombre}</td><td className="px-3 py-2 text-center">{it.cantidad}</td><td className="px-3 py-2 text-right">{fmt(it.precio_unitario)}</td><td className="px-3 py-2 text-right font-mono">{fmt(it.total)}</td></tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+            {canAprobar&&sel.status==='Pendiente'&&(
+              <div className="flex justify-end gap-2 pt-2">
+                <Btn color="red" onClick={()=>setModal('rechazar')}>✗ Rechazar</Btn>
+                <Btn color="green" onClick={()=>setModal('autorizar')}>✓ Autorizar</Btn>
+              </div>
+            )}
+            {(canAll||user.perm_finanzas)&&(sel.status==='Autorizada'||sel.status==='Pago en proceso')&&(
+              <div className="flex justify-end gap-2 pt-2">
+                <Btn color="outline" onClick={()=>sendEmail(sel)}>✉️ Enviar email</Btn>
+                <Btn onClick={()=>setModal('pago')}>💳 Registrar pago</Btn>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal AUTORIZAR */}
+      {modal==='autorizar'&&sel&&(
+        <Modal title="Autorizar requisición" onClose={()=>setModal(null)} size="sm">
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">¿Autorizar la requisición <strong>#{sel.numero_requisicion}</strong> por <strong>{fmt(sel.total_pago)}</strong>?</p>
+            <div className="flex justify-end gap-2">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn color="green" disabled={saving} onClick={()=>cambiarStatus(sel,'Autorizada')}>{saving?'Guardando...':'✓ Autorizar'}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal RECHAZAR */}
+      {(modal==='rechazar'||modal==='cancelar')&&sel&&(
+        <Modal title={modal==='rechazar'?'Rechazar requisición':'Cancelar requisición'} onClose={()=>setModal(null)} size="sm">
+          <div className="space-y-4">
+            <Textarea label="Motivo" value={cancelNota} onChange={setCancelNota} rows={3}/>
+            <div className="flex justify-end gap-2">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn color="red" disabled={saving} onClick={()=>cambiarStatus(sel,modal==='rechazar'?'Cancelada':'Cancelada',{motivo:cancelNota})}>{saving?'Guardando...':'Confirmar'}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal PAGO */}
+      {modal==='pago'&&sel&&(
+        <Modal title="Registrar pago" onClose={()=>setModal(null)} size="sm">
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">Requisición <strong>#{sel.numero_requisicion}</strong> — Total: <strong>{fmt(sel.total_pago)}</strong></p>
+            <div className="flex justify-end gap-2">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn disabled={saving} onClick={()=>cambiarStatus(sel,'Pagada')}>{saving?'Guardando...':'💳 Marcar como pagada'}</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal NUEVO */}
+      {modal==='nuevo'&&(
+        <Modal title="Nueva requisición de pago" onClose={()=>setModal(null)} size="xl">
+          <form onSubmit={guardarReq}>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Proyecto <span className="text-red-500">*</span></label>
+                  <select value={form.proyecto_id} onChange={e=>setForm(f=>({...f,proyecto_id:e.target.value}))} required className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-200">
+                    <option value="">— Seleccionar proyecto —</option>
+                    {proyectos.filter(p=>p.status!=='Cerrado'&&p.status!=='Cancelado').map(p=><option key={p.id} value={p.id}>#{p.numero_proyecto} · {p.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Proveedor <span className="text-red-500">*</span></label>
+                  <select value={form.proveedor_id} onChange={e=>onProveedorChange(e.target.value)} required className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-200">
+                    <option value="">— Seleccionar proveedor —</option>
+                    {proveedores.map(p=><option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-gray-600">Director que autoriza <span className="text-red-500">*</span></label>
+                  <select value={form.director_id} onChange={e=>setForm(f=>({...f,director_id:e.target.value}))} required className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
+                    <option value="">— Seleccionar —</option>
+                    {directores.map(d=><option key={d.id} value={d.id}>{d.nombre}</option>)}
+                  </select>
+                </div>
+                <Sel label="Tipo" value={form.tipo} onChange={v=>setForm(f=>({...f,tipo:v}))} options={['Normal','Viáticos','Anticipos'].map(x=>({value:x,label:x}))}/>
+              </div>
+              <Input label="Descripción / Concepto" value={form.descripcion} onChange={v=>setForm(f=>({...f,descripcion:v}))} required/>
+              {/* Partidas */}
+              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 border-b flex items-center justify-between">
+                  <p className="text-xs font-bold text-gray-600 uppercase">Partidas</p>
+                  <button type="button" onClick={addItem} className="text-xs px-3 py-1 rounded-lg text-white font-medium" style={{background:'#00b5b5'}}>+ Agregar</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead><tr className="bg-gray-50 border-b"><th className="px-2 py-2 text-left">Actividad</th><th className="px-2 py-2 text-center w-16">Cant.</th><th className="px-2 py-2 text-right w-28">P.Unit.</th><th className="px-2 py-2 text-right w-24">Total</th><th className="px-2 py-2 w-8"></th></tr></thead>
+                    <tbody>{form.items.map((it,i)=>(
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="px-2 py-1">
+                          <select value={it.actividad} onChange={e=>updItem(i,'actividad',e.target.value)} className="border border-gray-200 rounded px-2 py-1 text-xs w-full bg-white">
+                            <option value="">Seleccionar...</option>
+                            {actividades.map(a=><option key={a} value={a}>{a}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-1"><input type="number" min="1" value={it.cantidad} onChange={e=>updItem(i,'cantidad',e.target.value)} className="border border-gray-200 rounded px-2 py-1 text-xs w-full text-center"/></td>
+                        <td className="px-2 py-1"><input type="number" min="0" step="0.01" value={it.precio_unitario} onChange={e=>updItem(i,'precio_unitario',e.target.value)} className="border border-gray-200 rounded px-2 py-1 text-xs w-full text-right"/></td>
+                        <td className="px-2 py-1 text-right font-mono">{fmt(it.total)}</td>
+                        <td className="px-2 py-1 text-center"><button type="button" onClick={()=>delItem(i)} className="text-red-400 hover:text-red-600 text-xs">✕</button></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              </div>
+              {/* Totales */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  {[['Subtotal',fmt(form.subtotal)],['IVA (16%)',fmt(form.iva)],['Ret. IVA',fmt(form.ret_iva)],['Ret. ISR',fmt(form.ret_isr)]].map(([k,v])=>(
+                    <div key={k}><p className="text-xs text-gray-500">{k}</p><p className="font-mono font-bold">{v}</p></div>
+                  ))}
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-200 flex items-center justify-between">
+                  <p className="font-bold text-gray-700">Total a pagar</p>
+                  <p className="text-xl font-bold" style={{color:'#00b5b5'}}>{fmt(form.total_pago)}</p>
+                </div>
+              </div>
+              <Textarea label="Observaciones" value={form.observaciones} onChange={v=>setForm(f=>({...f,observaciones:v}))} rows={2}/>
+              {msg&&<p className="text-sm bg-gray-50 rounded-lg px-3 py-2">{msg}</p>}
+              <div className="flex justify-end gap-2 mt-2">
+                <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+                <Btn type="submit" disabled={saving}>{saving?'Guardando...':'Crear requisición'}</Btn>
+              </div>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// APP PRINCIPAL
+// ═══════════════════════════════════════════════════════════════
+const SidebarLogo=({white})=>(
+  <div className="flex items-center gap-2">
+    <div style={{width:32,height:32,borderRadius:6,background:white?'rgba(255,255,255,0.15)':'#00b5b5',display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <span style={{color:'white',fontWeight:700,fontSize:14}}>S</span>
+    </div>
+    <div><p style={{color:white?'white':'#1a252f',fontWeight:700,fontSize:13,lineHeight:1}}>SERTA</p><p style={{color:white?'rgba(255,255,255,0.5)':'#6b7280',fontSize:10,lineHeight:1}}>Intranet</p></div>
+  </div>
+);
+
+function App(){
+  const[user,setUser]=useState(getS());
+  const[mod,setMod]=useState('inicio');
+  if(!user)return <LoginPage onLogin={u=>{setUser(u);setMod('inicio');}}/>;
+  const logout=()=>{sessionStorage.removeItem(SK);setUser(null);};
+  const isAdmin=user.rol==='Administrador';
+  return(
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
+      {/* Sidebar */}
+      <div className="flex flex-col w-56 shrink-0 h-full overflow-y-auto" style={{background:'linear-gradient(180deg,#1a252f 0%,#2c3e50 100%)'}}>
+        <div className="px-4 py-5 border-b border-white/10">
+          <SidebarLogo white/>
+        </div>
+        <nav className="flex-1 px-2 py-3 space-y-0.5">
+          {MODS.map(m=>{
+            const ok=!m.perm||isAdmin||user[m.perm];
+            if(!ok)return null;
+            const active=mod===m.id;
+            return(<button key={m.id} onClick={()=>setMod(m.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left ${active?'sidebar-item-active text-white':'text-white/60 hover:bg-white/10 hover:text-white'}`}>
+              <span className="text-base">{m.icon}</span>{m.label}
+            </button>);
+          })}
+        </nav>
+        <div className="px-4 py-4 border-t border-white/10">
+          <div className="flex items-center gap-2 mb-3">
+            <Avatar nombre={user.nombre} foto_url={user.foto_url} size="sm"/>
+            <div className="flex-1 min-w-0"><p className="text-xs font-medium text-white truncate">{user.nombre}</p><p className="text-xs text-white/40 truncate">{user.rol}</p></div>
+          </div>
+          <button onClick={logout} className="w-full text-xs text-white/40 hover:text-white/70 py-1 transition text-left">← Cerrar sesión</button>
+        </div>
+      </div>
+      {/* Contenido */}
+      <div className="flex-1 overflow-auto">
+        {mod==='inicio'&&<Dashboard user={user}/>}
+        {mod==='rrhh'&&<RRHHModule user={user}/>}
+        {mod==='proveedores'&&<ProveedoresModule user={user}/>}
+        {mod==='clientes'&&<ClientesModule user={user}/>}
+        {mod==='ventas'&&<VentasModule user={user}/>}
+        {mod==='proyectos'&&<ProyectosModule user={user}/>}
+        {mod==='requisiciones'&&<RequisicionesModule user={user}/>}
+        {mod==='comisiones'&&<ComisionesModule user={user}/>}
+        {mod==='finanzas'&&<div className="p-6"><Empty msg="Módulo Finanzas — próximamente"/></div>}
+        {mod==='calidad'&&<div className="p-6"><Empty msg="Módulo Calidad — próximamente"/></div>}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
