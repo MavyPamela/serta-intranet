@@ -240,6 +240,96 @@ function LoginPage({onLogin}){
 
 // SIDEBAR ───────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════
+// ── Tarjetas corporativas (usadas en Dashboard) ──────────────
+function PillarCard({icon,titulo,tagline,desc,accentBg}){
+  const[h,setH]=useState(false);
+  return(
+    <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
+      style={{height:'140px',position:'relative',overflow:'hidden',cursor:'default',borderRadius:'16px',
+        boxShadow:h?'0 10px 28px rgba(0,0,0,0.16)':'0 2px 6px rgba(0,0,0,0.05)',
+        transition:'box-shadow 0.3s ease',background:'white',border:'1px solid #f1f5f9'}}>
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,background:accentBg,
+        opacity:h?1:0,transition:'opacity 0.35s ease'}}/>
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,display:'flex',
+        flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'8px',
+        opacity:h?0:1,transform:h?'translateY(-10px)':'translateY(0)',
+        transition:'opacity 0.2s ease, transform 0.25s ease',padding:'20px'}}>
+        <div style={{fontSize:'1.8rem'}}>{icon}</div>
+        <p style={{fontWeight:700,fontSize:'0.75rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#1a252f',textAlign:'center'}}>{titulo}</p>
+        <p style={{fontSize:'0.65rem',color:'#9ca3af',textAlign:'center'}}>{tagline}</p>
+      </div>
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,display:'flex',
+        flexDirection:'column',justifyContent:'center',padding:'18px',
+        opacity:h?1:0,transform:h?'translateY(0)':'translateY(12px)',
+        transition:'opacity 0.28s ease 0.05s, transform 0.3s ease 0.05s'}}>
+        <div style={{display:'flex',alignItems:'center',gap:'6px',marginBottom:'8px'}}>
+          <span style={{fontSize:'1rem'}}>{icon}</span>
+          <p style={{fontWeight:700,fontSize:'0.7rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'white'}}>{titulo}</p>
+        </div>
+        <p style={{color:'rgba(255,255,255,0.85)',fontSize:'0.73rem',lineHeight:'1.6'}}>{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+function ValorCard({icon,titulo,desc}){
+  const[h,setH]=useState(false);
+  return(
+    <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
+      style={{height:'90px',position:'relative',overflow:'hidden',cursor:'default',borderRadius:'14px',
+        background:h?'#1a252f':'white',border:'1px solid',
+        borderColor:h?'transparent':'#f1f5f9',
+        boxShadow:h?'0 6px 20px rgba(0,0,0,0.15)':'0 1px 4px rgba(0,0,0,0.04)',
+        transition:'background 0.3s, box-shadow 0.3s, border-color 0.3s'}}>
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,display:'flex',
+        alignItems:'center',justifyContent:'center',flexDirection:'column',gap:'6px',
+        opacity:h?0:1,transform:h?'translateY(-8px)':'translateY(0)',
+        transition:'opacity 0.18s ease, transform 0.22s ease'}}>
+        <span style={{fontSize:'1.3rem'}}>{icon}</span>
+        <p style={{fontWeight:700,fontSize:'0.66rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#1a252f'}}>{titulo}</p>
+      </div>
+      <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,padding:'12px 14px',
+        display:'flex',flexDirection:'column',justifyContent:'center',
+        opacity:h?1:0,transform:h?'translateY(0)':'translateY(10px)',
+        transition:'opacity 0.25s ease 0.06s, transform 0.28s ease 0.06s'}}>
+        <div style={{display:'flex',alignItems:'center',gap:'5px',marginBottom:'4px'}}>
+          <span style={{fontSize:'0.9rem'}}>{icon}</span>
+          <p style={{fontWeight:700,fontSize:'0.64rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#00b5b5'}}>{titulo}</p>
+        </div>
+        <p style={{color:'rgba(255,255,255,0.75)',fontSize:'0.68rem',lineHeight:'1.5'}}>{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+function CalidadCard(){
+  const[h,setH]=useState(false);
+  return(
+    <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
+      style={{borderRadius:'14px',overflow:'hidden',border:'1px solid #f1f5f9',
+        boxShadow:h?'0 6px 20px rgba(0,0,0,0.08)':'0 1px 4px rgba(0,0,0,0.04)',
+        transition:'box-shadow 0.3s'}}>
+      <div style={{padding:'12px 20px',background:'linear-gradient(90deg,#1a252f,#2c3e50)',
+        display:'flex',alignItems:'center',gap:'8px',cursor:'default'}}>
+        <span style={{fontSize:'1rem'}}>✅</span>
+        <p style={{fontWeight:700,fontSize:'0.72rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'white'}}>Política de Calidad</p>
+        <span style={{marginLeft:'auto',fontSize:'0.68rem',color:'rgba(255,255,255,0.35)',fontStyle:'italic'}}>
+          {h?'':'pasa el mouse para leer →'}
+        </span>
+      </div>
+      <div style={{background:'white',padding:'0 20px',
+        maxHeight:h?'180px':'0px',opacity:h?1:0,
+        transition:'max-height 0.4s ease, opacity 0.3s ease, padding 0.3s ease',
+        paddingTop:h?'16px':0,paddingBottom:h?'16px':0,overflow:'hidden'}}>
+        <p style={{color:'#6b7280',fontSize:'0.8rem',lineHeight:'1.7'}}>
+          Somos una empresa con una profunda orientación de servicio al cliente y a la mejora continua. En SERTA Marketing Intelligence Partner, nuestros clientes encuentran profesionalismo y atención esmerada para comprender sus necesidades y traducirlas en proyectos efectivos y confiables que les proporcionen la información de mercado apropiada, entendible y oportuna para tomar las decisiones que más favorezcan sus estrategias comerciales y de mercado.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
 const MODS=[
   {id:'inicio',label:'Inicio',icon:'🏠',perm:null},
   {id:'rrhh',label:'RR.HH.',icon:'👥',perm:'perm_empleados'},
