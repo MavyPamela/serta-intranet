@@ -3291,18 +3291,21 @@ function calcComision(inp, cfg){
   const delta_cn       = c('delta_cliente_nuevo',0.015);
   const delta_sind     = c('delta_sindicado',-0.015);
 
-  // Monto SERTA
+  // 1. Monto SERTA
   const monto_serta = empresa==='GIPA'
     ? monto_cerrado * factor_gipa
     : monto_cerrado - comision_conecta;
 
-  // Comisión PM máxima
-  const comision_pm_max = Math.min(monto_serta * pct_pm, tope_pm);
+  // 2. MSD sin comisiones (base real para PM y ventas)
+  const msd_sin_com = monto_serta - costos_directos;
 
-  // MSD antes de comisión ventas
-  const msd_antes_cv = monto_serta - costos_directos - comision_pm_max;
+  // 3. Comisión PM máxima — base: MSD sin comisiones
+  const comision_pm_max = Math.min(msd_sin_com * pct_pm, tope_pm);
 
-  // % Comisión ventas
+  // 4. MSD antes de comisión ventas
+  const msd_antes_cv = msd_sin_com - comision_pm_max;
+
+  // 5. % Comisión ventas
   let pct = base_cv;
   if(flag_renovacion)   pct += delta_ren;
   if(flag_prospectado)  pct += delta_pros;
@@ -3311,13 +3314,13 @@ function calcComision(inp, cfg){
   if(flag_sindicado)    pct += delta_sind;
   const pct_com_ventas = Math.max(0, Math.min(tope_cv, pct));
 
-  // Comisión ventas máxima
-  const com_ventas_max = monto_serta * pct_com_ventas;
+  // 6. Comisión ventas — base: MSD antes de CV
+  const com_ventas_max = msd_antes_cv * pct_com_ventas;
 
-  // Excedente
+  // 7. Excedente
   const excedente = monto_serta * pct_costo_max - costos_directos - comision_pm_max - com_ventas_max;
 
-  // Ajuste proporcional si excedente negativo
+  // 8. Ajuste proporcional si excedente negativo
   let com_final_pm, com_final_ventas;
   if(excedente >= 0 || (comision_pm_max + com_ventas_max) === 0){
     com_final_pm     = comision_pm_max;
@@ -3329,10 +3332,10 @@ function calcComision(inp, cfg){
     com_final_ventas = Math.max(0, disponible * (com_ventas_max  / total_com));
   }
 
-  // MSD Final
+  // 9. MSD Final
   const msd_final = monto_serta - costos_directos - com_final_pm - com_final_ventas;
 
-  return{monto_serta,comision_pm_max,msd_antes_cv,pct_com_ventas,com_ventas_max,
+  return{monto_serta,msd_sin_com,comision_pm_max,msd_antes_cv,pct_com_ventas,com_ventas_max,
          excedente,com_final_pm,com_final_ventas,msd_final};
 }
 
@@ -3382,7 +3385,7 @@ function ComisionesModule({user}){
   const[msg,setMsg]=useState('');
 
   // Filtros
-  const[fAnio,setFAnio]=useState(String(new Date().getFullYear()));
+  const[fAnio,setFAnio]=useState('');
   const[fEmpresa,setFEmpresa]=useState('');
   const[fVendedor,setFVendedor]=useState('');
   const[fMes,setFMes]=useState('');
@@ -3568,7 +3571,7 @@ function ComisionesModule({user}){
         <Sel label="Empresa" value={fEmpresa} onChange={setFEmpresa} options={[{value:'',label:'Todas'},{value:'SERTA',label:'SERTA'},{value:'GIPA',label:'GiPA'}]}/>
         {canSeeAll&&<Sel label="Vendedor" value={fVendedor} onChange={setFVendedor} options={[{value:'',label:'Todos'},...usuarios.map(u=>({value:String(u.id),label:u.nombre}))]}/>}
         <Sel label="Mes" value={fMes} onChange={setFMes} options={[{value:'',label:'Todos'},...MESES.map((m,i)=>({value:String(i+1),label:m}))]}/>
-        <Btn color="gray" size="sm" onClick={()=>{setFAnio(String(new Date().getFullYear()));setFEmpresa('');setFVendedor('');setFMes('');}}>Limpiar</Btn>
+        <Btn color="gray" size="sm" onClick={()=>{setFAnio('');setFEmpresa('');setFVendedor('');setFMes('');}}>Limpiar</Btn>
       </div>
 
       {/* KPI Cards */}
