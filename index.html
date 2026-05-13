@@ -2460,7 +2460,7 @@ function VentasModule({user}){
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Estatus seguimiento</label>
                 <select value={form.estatus_seguimiento||'En proceso'} onChange={e=>setForm(f=>({...f,estatus_seguimiento:e.target.value}))}
                   className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
-                  {['Proyecto activo','En proceso','Pendiente por autorizar','Cancelado','Pospuesto','Pagado','Cerrado'].map(s=><option key={s} value={s}>{s}</option>)}
+                  {['Proyecto activo','En proceso','Pendiente por autorizar','Pendiente de pago','Cancelado','Pospuesto','Pagado','Cerrado'].map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <Sel label="Empresa" value={form.empresa||'SERTA'} onChange={v=>setForm(f=>({...f,empresa:v}))} options={['SERTA','GIPA'].map(x=>({value:x,label:x}))}/>
