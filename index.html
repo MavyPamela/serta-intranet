@@ -2043,7 +2043,7 @@ function VentasModule({user}){
       return;
     }
     setSaving(true);setMsg('');
-    const{data:estudio,error}=await sb.rpc('fn_autorizar_venta',{p_proyecto_id:sel.id});
+    const{data:estudio,error}=await sb.rpc('fn_autorizar_venta',{p_proyecto_id:sel.id,p_autorizado_por:user.id});
     if(error){setMsg('❌ '+(error.message||'Error al autorizar'));setSaving(false);return;}
     await load();
     setSaving(false);
@@ -2372,7 +2372,7 @@ function ProyectosModule({user}){
   const load=useCallback(async()=>{
     setLoading(true);
     let query=sb.from('proyectos')
-      .select('*, cliente:clientes(nombre), vendedor:empleados!vendedor_id(nombre,foto_url)')
+      .select('*, cliente:clientes(nombre), vendedor:empleados!vendedor_id(nombre,foto_url), autorizador:empleados!autorizado_por(nombre)')
       .in('status',['Autorizado','Activo','Cerrado','Cancelado'])
       .order('numero_proyecto',{ascending:false});
 
@@ -2475,6 +2475,16 @@ function ProyectosModule({user}){
       setTimeout(()=>{setModal(null);setMsg('');},1400);
     }catch(er){setMsg('❌ '+(er.message||'Error'));}
     setSaving(false);
+  };
+
+  const puedeReabrir=(p)=>isAdmin||String(p.autorizado_por)===String(user.id);
+
+  const reabrirProyecto=async(p)=>{
+    if(!confirm(`¿Reabrir el proyecto "${p.nombre}"? Volverá a status Activo.`))return;
+    await sb.from('proyectos').update({
+      status:'Activo', closed_at:null, updated_at:new Date().toISOString()
+    }).eq('id',p.id);
+    load();
   };
 
   const cancelarProyecto=async(p)=>{
@@ -2724,6 +2734,7 @@ function ProyectosModule({user}){
                         {canActivate&&(p.status==='Prospecto'||p.status==='Autorizado')&&<Btn size="sm" color="green" onClick={()=>{setSel(p);setForm({pm_id:''});setMsg('');setModal('activar');}}>Activar</Btn>}
                         {(isPM(p)||isAdmin)&&p.status==='Activo'&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadColabs(p.id);setModal('colabs');}}>Equipo</Btn>}
                         {(isPM(p)||isAdmin)&&p.status==='Activo'&&<Btn size="sm" color="blue" onClick={()=>abrirCerrarProyecto(p)}>Cerrar</Btn>}
+                        {p.status==='Cerrado'&&puedeReabrir(p)&&<Btn size="sm" color="green" onClick={()=>reabrirProyecto(p)}>Reabrir</Btn>}
                         {canActivate&&(p.status==='Prospecto'||p.status==='Autorizado')&&<Btn size="sm" color="red" onClick={()=>cancelarProyecto(p)}>Cancelar</Btn>}
                       </div>
                     </td>
@@ -3386,7 +3397,7 @@ function ComisionesModule({user}){
     setUsuarios(usu||[]);
     const todas=com||[];
     if(canSeeAll)setRows(todas);
-    else setRows(todas.filter(r=>r.vendedor_id===user.id));
+    else setRows(todas.filter(r=>String(r.vendedor_id)===String(user.id)));
     setLoading(false);
   },[canSeeAll,user.id]);
 
@@ -3926,7 +3937,7 @@ function RequisicionesModule({user}){
           'fecha_envio,fecha_autorizacion,fecha_pago,motivo_cancelacion,'+
           'eval_score,eval_areas,eval_otro,eval_fecha,created_at'
         ).order('created_at',{ascending:false}),
-        sb.from('proyectos').select('id,numero_proyecto,nombre,empresa').in('status',['Activo','Cerrado','Prospecto','Autorizado']).order('numero_proyecto',{ascending:false}),
+        sb.from('proyectos').select('id,numero_proyecto,nombre,empresa,status').in('status',['Activo','Cerrado','Prospecto','Autorizado']).order('numero_proyecto',{ascending:false}),
         sb.from('proveedores').select('id,nombre,email,regimen_fiscal').eq('activo',true).order('nombre'),
         sb.from('empleados').select('id,nombre,rol').eq('activo',true).order('nombre'),
         sb.from('actividades_proveedor').select('nombre').eq('activo',true).order('orden'),
@@ -4229,7 +4240,7 @@ SERTA de México`
                 <label className="text-xs font-medium text-gray-600">Proyecto <span className="text-red-500">*</span></label>
                 <select value={form.proyecto_id} onChange={e=>setForm(f=>({...f,proyecto_id:e.target.value}))} required className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-200">
                   <option value="">— Seleccionar proyecto —</option>
-                  {proyectos.map(p=><option key={p.id} value={p.id}>#{p.numero_proyecto} · {p.nombre}</option>)}
+                  {proyectos.filter(p=>p.status!=='Cerrado'&&p.status!=='Cancelado').map(p=><option key={p.id} value={p.id}>#{p.numero_proyecto} · {p.nombre}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
