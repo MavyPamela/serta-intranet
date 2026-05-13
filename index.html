@@ -457,93 +457,231 @@ function Sidebar({user,active,setActive,onLogout}){
 
 // DASHBOARD ─────────────────────────────────────────────────────
 function Dashboard({user}){
-  const[s,setS]=useState({emp:0,vac:0,proy:0,cli:0,cumples:[],reqsPendientes:[]});
+  const[s,setS]=useState({emp:0,vac:0,proy:0,cli:0,pipeline:0,pipelineVal:0,cumples:[],
+    reqsPendientes:[],vacPendientes:[],proyAutorizar:[],comBorradores:0,misVentas:[]});
   const canAprobar=user.rol==='Administrador'||user.perm_aprobar_req||user.perm_autorizar_proyectos;
+  const canAprobarVac=user.rol==='Administrador'||user.perm_aprobar_vacaciones;
+  const canVerCom=user.rol==='Administrador'||user.perm_ver_comisiones||user.perm_autorizar_proyectos;
+  const esVendedor=user.perm_ventas;
+  const esContabilidad=user.perm_finanzas||user.perm_contabilidad;
+
   useEffect(()=>{
     (async()=>{
-      const hoy=new Date();
-      const mes=String(hoy.getMonth()+1).padStart(2,'0');
-      const[e,v,p,c,cb,rq]=await Promise.all([
+      const hoy=new Date(); const mesActual=hoy.getMonth()+1; const diaActual=hoy.getDate();
+      const[eRes,vRes,pRes,cRes,cbRes,rqRes,vacRes,proyAutRes,comBorRes,misVentasRes]=await Promise.all([
         sb.from('empleados').select('id',{count:'exact',head:true}).eq('activo',true),
         sb.from('vacaciones').select('id',{count:'exact',head:true}).eq('estatus','Pendiente'),
-        sb.from('proyectos').select('id',{count:'exact',head:true}).eq('estatus','En Progreso'),
+        sb.from('proyectos').select('id',{count:'exact',head:true}).eq('status','Activo'),
         sb.from('clientes').select('id',{count:'exact',head:true}).eq('activo',true),
         sb.from('empleados').select('nombre,cumple_dia,cumple_mes,foto_url').eq('activo',true).not('cumple_mes','is',null),
-        canAprobar?sb.from('requisiciones').select('id,numero_requisicion,descripcion,total_pago,creado_por,proyecto_id,proveedor_id').eq('status','Pendiente').eq('director_id',user.id).order('created_at',{ascending:false}).limit(10):{data:[]},
+        canAprobar?sb.from('requisiciones').select('id,numero_requisicion,descripcion,total_pago').eq('status','Pendiente').eq('director_id',user.id).order('created_at',{ascending:false}).limit(8):{data:[]},
+        canAprobarVac?sb.from('vacaciones').select('id,tipo,dias,fecha_inicio,fecha_fin,empleado_id').eq('estatus','Pendiente').order('created_at',{ascending:false}).limit(5):{data:[]},
+        canAprobar?sb.from('proyectos').select('id,nombre,numero_proyecto,importe').in('status',['En venta','Venta','En espera de autorización']).order('created_at',{ascending:false}).limit(5):{data:[]},
+        (canVerCom||esContabilidad)?sb.from('comisiones').select('id',{count:'exact',head:true}).eq('status','Borrador'):{data:null,count:0},
+        esVendedor?sb.from('proyectos').select('id,nombre,status,importe,numero_proyecto').in('status',['En venta','Venta','En espera de autorización','Autorizado']).or(`vendedor_id.eq.${user.id},created_by.eq.${user.id}`).order('created_at',{ascending:false}).limit(5):{data:[]},
       ]);
-      const mesActual=hoy.getMonth()+1;
-      const cumples=(cb.data||[]).filter(e=>e.cumple_mes===mesActual);
-      setS({emp:e.count||0,vac:v.count||0,proy:p.count||0,cli:c.count||0,cumples,reqsPendientes:rq.data||[]});
+      const cumples=(cbRes.data||[]).filter(e=>e.cumple_mes===mesActual);
+      const pipeline=(proyAutRes.data||[]);
+      const pipelineVal=pipeline.reduce((s,p)=>s+(p.importe||0),0);
+      // Detectar si HOY es el cumpleaños o aniversario del usuario actual
+      const userEmp=(cbRes.data||[]).find(e=>e.nombre===user.nombre);
+      const esCumple=userEmp&&userEmp.cumple_dia===diaActual&&userEmp.cumple_mes===mesActual;
+      // Aniversario: buscar fecha_ingreso del empleado actual
+      const{data:empData}=await sb.from('empleados').select('fecha_ingreso').eq('id',user.id).single();
+      const fechaIngreso=empData?.fecha_ingreso;
+      let esAniversario=false; let anosAntig=0;
+      if(fechaIngreso){
+        const ing=new Date(fechaIngreso);
+        esAniversario=ing.getDate()===diaActual&&(ing.getMonth()+1)===mesActual;
+        anosAntig=hoy.getFullYear()-ing.getFullYear();
+      }
+      setS({
+        emp:eRes.count||0, vac:vRes.count||0, proy:pRes.count||0, cli:cRes.count||0,
+        pipeline:pipeline.length, pipelineVal, cumples,
+        reqsPendientes:rqRes.data||[], vacPendientes:vacRes.data||[],
+        proyAutorizar:pipeline, comBorradores:comBorRes.count||0, misVentas:misVentasRes.data||[],
+        esCumple, esAniversario, anosAntig,
+      });
     })();
-  },[canAprobar,user.id]);
+  },[canAprobar,canAprobarVac,canVerCom,esVendedor,esContabilidad,user.id]);
   const h=new Date().getHours();
   const sal=h<12?'Buenos días':h<18?'Buenas tardes':'Buenas noches';
+  const SC=({title,value,sub,icon,col='#00b5b5'})=>(
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">{title}</span>
+        <span className="text-lg">{icon}</span>
+      </div>
+      <p className="text-2xl font-bold" style={{color:col}}>{value}</p>
+      {sub&&<p className="text-xs text-gray-400 mt-1">{sub}</p>}
+    </div>
+  );
+  const PendCard=({title,items,emptyMsg,color='#f59e0b',renderItem})=>(
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-3">
+      <div className="flex items-center gap-2 mb-3">
+        <p className="text-xs font-bold text-gray-600 uppercase tracking-wide flex-1">{title}</p>
+        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{background:color+'22',color}}>{items.length}</span>
+      </div>
+      {items.length===0?<p className="text-xs text-gray-400 italic">{emptyMsg}</p>:
+        <div className="space-y-2">{items.map((it,i)=>renderItem(it,i))}</div>}
+    </div>
+  );
   return(
     <div className="p-6 fade">
-      <div className="mb-6">
+      {/* Banners de felicitación */}
+      {s.esCumple&&(
+        <div className="rounded-2xl p-5 mb-5 text-center" style={{background:'linear-gradient(135deg,#fce7f3,#fdf2f8)',border:'2px solid #f9a8d4'}}>
+          <p className="text-3xl mb-1">🎂🎉</p>
+          <p className="text-lg font-bold text-pink-700">¡Feliz cumpleaños, {user.nombre.split(' ')[0]}!</p>
+          <p className="text-sm text-pink-500 mt-1">Todo el equipo de SERTA te desea un día muy especial. ¡Que los cumplas muy feliz!</p>
+        </div>
+      )}
+      {s.esAniversario&&!s.esCumple&&(
+        <div className="rounded-2xl p-5 mb-5 text-center" style={{background:'linear-gradient(135deg,#e0f2fe,#f0f9ff)',border:'2px solid #7dd3fc'}}>
+          <p className="text-3xl mb-1">⭐🏆</p>
+          <p className="text-lg font-bold text-blue-700">¡{s.anosAntig} {s.anosAntig===1?'año':'años'} con nosotros, {user.nombre.split(' ')[0]}!</p>
+          <p className="text-sm text-blue-500 mt-1">Gracias por tu compromiso y dedicación. ¡Tu trayectoria es parte fundamental de SERTA!</p>
+        </div>
+      )}
+      {/* Header */}
+      <div className="mb-5">
         <h1 className="text-2xl font-bold text-gray-800">{sal}, {user.nombre.split(' ')[0]} 👋</h1>
         <p className="text-gray-500 text-sm mt-1">{new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Empleados activos" value={s.emp} icon="👥" color="blue"/>
-        <StatCard title="Vacaciones pendientes" value={s.vac} icon="🏖️" color="orange"/>
-        <StatCard title="Proyectos en curso" value={s.proy} icon="🏗️" color="purple"/>
-        <StatCard title="Clientes activos" value={s.cli} icon="🤝" color="green"/>
-      </div>
-      {s.cumples.length>0&&(
-        <div className="bg-gradient-to-r from-pink-50 to-orange-50 border border-pink-200 rounded-2xl p-4 mb-6">
-          <p className="font-semibold text-pink-700 mb-2">🎂 Cumpleaños este mes</p>
-          <div className="flex flex-wrap gap-3">
-            {s.cumples.map((e,i)=>(
-              <div key={i} className="flex items-center gap-2 bg-white rounded-xl px-3 py-2 shadow-sm">
-                <Avatar nombre={e.nombre} foto_url={e.foto_url}/>
-                <div>
-                  <p className="text-sm font-medium text-gray-800">{e.nombre}</p>
-                  <p className="text-xs text-gray-500">{e.cumple_dia} de {['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][(e.cumple_mes||1)-1]}</p>
-                </div>
-              </div>
-            ))}
+
+      {/* Layout dos columnas */}
+      <div className="flex gap-5" style={{alignItems:'flex-start'}}>
+
+        {/* ── Columna izquierda (KPIs + cumpleaños) ── */}
+        <div className="flex-1 min-w-0">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <SC title="Empleados" value={s.emp} icon="👥" col="#3b82f6"/>
+            <SC title="Proy. activos" value={s.proy} icon="🏗️" col="#00b5b5"/>
+            <SC title="Pipeline" value={s.pipeline} sub={fmt(s.pipelineVal)} icon="💼" col="#8b5cf6"/>
+            <SC title="Clientes" value={s.cli} icon="🤝" col="#10b981"/>
           </div>
-        </div>
-      )}
-      {/* Requisiciones pendientes de autorizar */}
-      {canAprobar&&s.reqsPendientes.length>0&&(
-        <div className="bg-white rounded-2xl border-2 border-orange-200 p-5 shadow-sm mb-5">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xl">⏳</span>
-            <h2 className="font-semibold text-gray-800">Requisiciones por autorizar</h2>
-            <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">{s.reqsPendientes.length}</span>
-          </div>
-          <div className="space-y-2">
-            {s.reqsPendientes.map(r=>(
-              <div key={r.id} className="flex items-center justify-between bg-orange-50 rounded-xl px-4 py-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm font-bold text-orange-700">#{r.numero_requisicion}</span>
-                    <span className="text-sm font-medium text-gray-800">{r.descripcion||'—'}</span>
+
+          {/* Cumpleaños del mes */}
+          {s.cumples.length>0&&(
+            <div className="bg-white rounded-2xl border border-pink-100 p-4 mb-4">
+              <p className="text-xs font-bold text-pink-600 uppercase tracking-wide mb-3">🎂 Cumpleaños este mes</p>
+              <div className="flex flex-wrap gap-2">
+                {s.cumples.map((e,i)=>(
+                  <div key={i} className="flex items-center gap-2 bg-pink-50 rounded-xl px-3 py-2">
+                    <Avatar nombre={e.nombre} foto_url={e.foto_url}/>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-800">{e.nombre.split(' ')[0]} {e.nombre.split(' ')[1]||''}</p>
+                      <p className="text-xs text-gray-500">{e.cumple_dia} {['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][(e.cumple_mes||1)-1]}</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">Requisición #{r.numero_requisicion}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-gray-800">{fmt(r.total_pago)}</p>
-                  <p className="text-xs text-orange-600 font-medium">Pendiente</p>
-                </div>
+                ))}
               </div>
-            ))}
+            </div>
+          )}
+
+          {/* Mis ventas activas (vendedores) */}
+          {esVendedor&&s.misVentas.length>0&&(
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
+              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-3">💼 Mis ventas activas</p>
+              <div className="space-y-2">
+                {s.misVentas.map(p=>(
+                  <div key={p.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{p.nombre}</p>
+                      <p className="text-xs text-gray-400">#{p.numero_proyecto}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-semibold" style={{color:'#00b5b5'}}>{fmt(p.importe||0)}</p>
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{background:p.status==='Autorizado'?'#d1fae5':p.status==='En espera de autorización'?'#fef3c7':'#ede9fe',color:p.status==='Autorizado'?'#065f46':p.status==='En espera de autorización'?'#92400e':'#5b21b6'}}>{p.status}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Módulos */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Módulos disponibles</p>
+            <div className="grid grid-cols-3 gap-2">
+              {MODS.filter(m=>m.id!=='inicio').map(m=>{
+                const ok=!m.perm||user.rol==='Administrador'||user[m.perm];
+                return ok?<div key={m.id} className="bg-gray-50 hover:bg-teal-50 rounded-xl p-3 border border-gray-100 hover:border-teal-200 transition cursor-default text-center">
+                  <div className="text-xl mb-1">{m.icon}</div>
+                  <p className="text-xs font-medium text-gray-600">{m.label}</p>
+                </div>:null;
+              })}
+            </div>
           </div>
-          <p className="text-xs text-gray-400 mt-3">Ve a <span className="font-medium" style={{color:'#008a8a'}}>Requisiciones</span> para autorizar o ver el detalle.</p>
         </div>
-      )}
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
-        <h2 className="font-bold text-gray-700 mb-4 text-sm uppercase tracking-wider">Módulos disponibles</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {MODS.filter(m=>m.id!=='dashboard').map(m=>{
-            const ok=!m.perm||user.rol==='Administrador'||user[m.perm];
-            return ok?<div key={m.id} className="bg-gray-50 hover:bg-teal-50 rounded-xl p-4 border border-gray-100 hover:border-teal-200 transition cursor-default">
-              <div className="text-2xl mb-2">{m.icon}</div>
-              <p className="font-semibold text-sm text-gray-700">{m.label}</p>
-            </div>:null;
-          })}
+
+        {/* ── Columna derecha (Pendientes por rol) ── */}
+        <div style={{width:'320px',flexShrink:0}}>
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">⚡ Mis pendientes</p>
+
+          {/* Proyectos por autorizar (dirección) */}
+          {canAprobar&&(
+            <PendCard title="Proyectos por autorizar" items={s.proyAutorizar} emptyMsg="Sin proyectos pendientes de autorización" color="#8b5cf6"
+              renderItem={(p,i)=>(
+                <div key={i} className="flex items-center justify-between bg-purple-50 rounded-xl px-3 py-2">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-800">{p.nombre}</p>
+                    <p className="text-xs text-gray-400">#{p.numero_proyecto}</p>
+                  </div>
+                  <p className="text-xs font-bold text-purple-700">{fmt(p.importe||0)}</p>
+                </div>
+              )}/>
+          )}
+
+          {/* Requisiciones por autorizar */}
+          {canAprobar&&(
+            <PendCard title="Requisiciones por autorizar" items={s.reqsPendientes} emptyMsg="Sin requisiciones pendientes" color="#f59e0b"
+              renderItem={(r,i)=>(
+                <div key={i} className="flex items-center justify-between bg-amber-50 rounded-xl px-3 py-2">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-800">{r.descripcion||`Req #${r.numero_requisicion}`}</p>
+                    <p className="text-xs text-gray-400">#{r.numero_requisicion}</p>
+                  </div>
+                  <p className="text-xs font-bold text-amber-700">{fmt(r.total_pago)}</p>
+                </div>
+              )}/>
+          )}
+
+          {/* Vacaciones por aprobar */}
+          {canAprobarVac&&(
+            <PendCard title="Vacaciones por aprobar" items={s.vacPendientes} emptyMsg="Sin solicitudes pendientes" color="#06b6d4"
+              renderItem={(v,i)=>(
+                <div key={i} className="flex items-center justify-between bg-cyan-50 rounded-xl px-3 py-2">
+                  <div>
+                    <p className="text-xs font-semibold text-gray-800">{v.tipo}</p>
+                    <p className="text-xs text-gray-400">{fmtD(v.fecha_inicio)} → {fmtD(v.fecha_fin)}</p>
+                  </div>
+                  <span className="text-xs font-bold text-cyan-700">{v.dias} días</span>
+                </div>
+              )}/>
+          )}
+
+          {/* Comisiones en borrador (contabilidad / admin) */}
+          {(canVerCom||esContabilidad)&&(
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-3">
+              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">💲 Comisiones en borrador</p>
+              {s.comBorradores===0
+                ?<p className="text-xs text-gray-400 italic">Sin borradores pendientes</p>
+                :<div className="flex items-center gap-3 bg-teal-50 rounded-xl px-3 py-3">
+                  <span className="text-2xl font-bold" style={{color:'#00b5b5'}}>{s.comBorradores}</span>
+                  <p className="text-xs text-gray-600">comisión{s.comBorradores!==1?'es':''} pendiente{s.comBorradores!==1?'s':''} de revisar en el módulo Comisiones</p>
+                </div>
+              }
+            </div>
+          )}
+
+          {/* Si no hay nada pendiente */}
+          {!canAprobar&&!canAprobarVac&&!canVerCom&&!esContabilidad&&!esVendedor&&(
+            <div className="bg-gray-50 rounded-2xl border border-gray-100 p-4 text-center">
+              <p className="text-2xl mb-2">✅</p>
+              <p className="text-xs text-gray-500">Todo al día — sin pendientes</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -3401,6 +3539,7 @@ const MESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','
 function ComisionesModule({user}){
   const isSuperAdmin=user.rol==='Administrador';
   const canSeeAll=isSuperAdmin||user.perm_autorizar_proyectos||user.perm_ver_comisiones;
+  const esContabilidad=isSuperAdmin||user.perm_finanzas||user.perm_contabilidad;
   const esVendedor=(r)=>String(r.vendedor_id)===String(user.id);
 
   // Estado
@@ -3445,7 +3584,7 @@ function ComisionesModule({user}){
           'flag_renovacion,flag_prospectado,flag_cliente_nuevo,flag_sindicado,'+
           'monto_serta,comision_pm_max,msd_antes_cv,pct_com_ventas,'+
           'com_ventas_max,excedente,com_final_pm,com_final_ventas,msd_final,'+
-          'notas,status,created_at'
+          'notas,status,fecha_pago_pm,fecha_pago_ventas,created_at'
         ).order('created_at',{ascending:false}),
       ]);
 
@@ -3743,7 +3882,11 @@ function ComisionesModule({user}){
                   <td className="px-4 py-3 text-right text-purple-700 font-mono text-xs font-medium">{fmt(r.com_final_pm)}</td>
                   <td className="px-4 py-3 text-right text-orange-700 font-mono text-xs font-medium">{(canSeeAll||esVendedor(r))?fmt(r.com_final_ventas):<span className="text-gray-300">—</span>}</td>
                   <td className="px-4 py-3 text-right text-green-700 font-mono text-xs font-bold">{fmt(r.msd_final)}</td>
-                  <td className="px-3 py-3 text-center"><Badge text={r.status} color={r.status==='Registrado'?'green':'gray'}/></td>
+                  <td className="px-3 py-3 text-center">
+                    <Badge text={r.status} color={r.status==='Registrado'?'green':'gray'}/>
+                    {r.fecha_pago_pm&&<span className="ml-1 text-xs text-purple-600" title={`PM pagado: ${fmtD(r.fecha_pago_pm)}`}>💜</span>}
+                    {r.fecha_pago_ventas&&<span className="ml-1 text-xs text-orange-500" title={`Ventas pagado: ${fmtD(r.fecha_pago_ventas)}`}>🧡</span>}
+                  </td>
                   <td className="px-3 py-3">
                     <div className="flex gap-1">
                       <button onClick={()=>openView(r)} className="text-gray-400 hover:text-teal-600 text-xs px-2 py-1 rounded hover:bg-teal-50 transition">Ver</button>
@@ -3891,6 +4034,36 @@ function ComisionesModule({user}){
               {selRow.flag_sindicado&&<Badge text="Sindicado" color="orange"/>}
             </div>
             {selRow.notas&&<div className="bg-gray-50 rounded-lg px-3 py-2 text-sm text-gray-600">{selRow.notas}</div>}
+
+            {/* Fechas de pago — solo contabilidad puede editar */}
+            <div className="bg-teal-50 rounded-xl p-3 border border-teal-100">
+              <p className="text-xs font-bold text-teal-700 uppercase tracking-wide mb-2">📅 Registro de pagos (Contabilidad)</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Fecha pago comisión PM</p>
+                  {esContabilidad
+                    ?<input type="date" value={selRow.fecha_pago_pm||''} onChange={async e=>{
+                        await sb.from('comisiones').update({fecha_pago_pm:e.target.value||null}).eq('id',selRow.id);
+                        setSelRow(r=>({...r,fecha_pago_pm:e.target.value}));
+                        load();
+                      }} className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-full focus:outline-none" style={{borderColor:'#00b5b5'}}/>
+                    :<p className="text-sm font-medium text-gray-800">{selRow.fecha_pago_pm?fmtD(selRow.fecha_pago_pm):'Pendiente'}</p>
+                  }
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Fecha pago comisión Ventas</p>
+                  {esContabilidad
+                    ?<input type="date" value={selRow.fecha_pago_ventas||''} onChange={async e=>{
+                        await sb.from('comisiones').update({fecha_pago_ventas:e.target.value||null}).eq('id',selRow.id);
+                        setSelRow(r=>({...r,fecha_pago_ventas:e.target.value}));
+                        load();
+                      }} className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-full focus:outline-none" style={{borderColor:'#00b5b5'}}/>
+                    :<p className="text-sm font-medium text-gray-800">{selRow.fecha_pago_ventas?fmtD(selRow.fecha_pago_ventas):'Pendiente'}</p>
+                  }
+                </div>
+              </div>
+            </div>
+
             {(canSeeAll||selRow.vendedor_id===user.id)&&selRow.status==='Borrador'&&(
               <div className="flex justify-end"><Btn onClick={()=>{openEdit(selRow);}}>✏️ Editar</Btn></div>
             )}
