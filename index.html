@@ -247,7 +247,7 @@ function PillarCard({icon,titulo,tagline,desc,accentBg}){
   const[h,setH]=useState(false);
   return(
     <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
-      style={{height:'200px',position:'relative',overflow:'hidden',cursor:'default',borderRadius:'16px',
+      style={{height:'140px',position:'relative',overflow:'hidden'},cursor:'default',borderRadius:'16px',
         boxShadow:h?'0 12px 32px rgba(0,0,0,0.18)':'0 2px 8px rgba(0,0,0,0.06)',
         transition:'box-shadow 0.3s ease',background:'white',border:'1px solid #f1f5f9'}}>
       {/* Fondo de color — se expande en hover */}
@@ -258,7 +258,7 @@ function PillarCard({icon,titulo,tagline,desc,accentBg}){
         flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'10px',
         opacity:h?0:1,transform:h?'translateY(-12px)':'translateY(0)',
         transition:'opacity 0.2s ease, transform 0.25s ease',padding:'24px'}}>
-        <div style={{fontSize:'2.5rem'}}>{icon}</div>
+        <div style={{fontSize:'1.8rem'}}>{icon}</div>
         <p style={{fontWeight:700,fontSize:'0.8rem',textTransform:'uppercase',letterSpacing:'0.12em',color:'#1a252f',textAlign:'center'}}>{titulo}</p>
         <p style={{fontSize:'0.7rem',color:'#9ca3af',textAlign:'center'}}>{tagline}</p>
       </div>
@@ -282,7 +282,7 @@ function ValorCard({icon,titulo,desc,delay=0}){
   const[h,setH]=useState(false);
   return(
     <div onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
-      style={{height:'130px',position:'relative',overflow:'hidden',cursor:'default',borderRadius:'16px',
+      style={{height:'90px',position:'relative',overflow:'hidden'},cursor:'default',borderRadius:'16px',
         background:h?'#1a252f':'white',border:'1px solid',
         borderColor:h?'transparent':'#f1f5f9',
         boxShadow:h?'0 8px 24px rgba(0,0,0,0.18)':'0 1px 4px rgba(0,0,0,0.05)',
@@ -292,8 +292,8 @@ function ValorCard({icon,titulo,desc,delay=0}){
         alignItems:'center',justifyContent:'center',flexDirection:'column',gap:'8px',
         opacity:h?0:1,transform:h?'translateY(-8px)':'translateY(0)',
         transition:'opacity 0.18s ease, transform 0.22s ease'}}>
-        <span style={{fontSize:'1.8rem'}}>{icon}</span>
-        <p style={{fontWeight:700,fontSize:'0.72rem',textTransform:'uppercase',letterSpacing:'0.12em',color:'#1a252f'}}>{titulo}</p>
+        <span style={{fontSize:'1.3rem'}}>{icon}</span>
+        <p style={{fontWeight:700,fontSize:'0.68rem'},textTransform:'uppercase',letterSpacing:'0.12em',color:'#1a252f'}}>{titulo}</p>
       </div>
       {/* Estado hover */}
       <div style={{position:'absolute',top:0,left:0,right:0,bottom:0,padding:'16px 18px',
@@ -558,7 +558,7 @@ function Dashboard({user}){
         <div style={{display:'flex',flexDirection:'column',gap:'20px'}}>
 
           {/* Misión · Visión · Filosofía */}
-          <div style={{background:'white',borderRadius:'16px',border:'1px solid #f1f5f9',padding:'20px',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+          <div style={{background:'white',borderRadius:'16px',border:'1px solid #f1f5f9',padding:'14px',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
             <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'16px'}}>
               <div style={{width:'3px',height:'18px',borderRadius:'2px',background:'linear-gradient(180deg,#00b5b5,#008a8a)'}}/>
               <p style={{fontSize:'0.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.18em',color:'#6b7280'}}>Identidad Corporativa</p>
@@ -577,13 +577,13 @@ function Dashboard({user}){
           </div>
 
           {/* Valores */}
-          <div style={{background:'white',borderRadius:'16px',border:'1px solid #f1f5f9',padding:'20px',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+          <div style={{background:'white',borderRadius:'16px',border:'1px solid #f1f5f9',padding:'14px',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
             <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'16px'}}>
               <div style={{width:'3px',height:'18px',borderRadius:'2px',background:'linear-gradient(180deg,#00b5b5,#008a8a)'}}/>
               <p style={{fontSize:'0.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.18em',color:'#6b7280'}}>Nuestros Valores</p>
               <p style={{fontSize:'0.65rem',color:'#d1d5db',marginLeft:'4px'}}>· pasa el mouse para leer</p>
             </div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'10px'}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px'}}>
               {[
                 {icon:'🤝',titulo:'Confianza',desc:'Trabajamos con transparencia y compromiso, generando relaciones basadas en la confianza mutua y en información precisa y oportuna.'},
                 {icon:'⚖️',titulo:'Integridad',desc:'Nos guiamos por la honestidad y la ética en cada decisión, asegurando que cada análisis refleje fielmente la realidad del mercado.'},
@@ -2120,6 +2120,7 @@ function VentasModule({user}){
   const[saving,setSaving]=useState(false);
   const[msg,setMsg]=useState('');
 
+  const esContabilidad=user.perm_finanzas||user.perm_contabilidad||user.rol==='Administrador';
   const canCreate=user.rol==='Administrador'||user.perm_ventas||user.perm_proyectos;
   const canAuthorize=user.rol==='Administrador'||user.perm_autorizar_proyectos;
   const isAdmin=user.rol==='Administrador';
@@ -2158,7 +2159,7 @@ function VentasModule({user}){
     return matchQ&&matchS&&matchV;
   }),[data,search,fStatus,fVendedores]);
 
-  const efNuevo={nombre:'',cliente_id:'',cliente_nuevo_nombre:'',contacto_id:'',vendedor_id:String(user.id),estado_venta:'Venta',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:'',flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false};
+  const efNuevo={nombre:'',cliente_id:'',cliente_nuevo_nombre:'',contacto_id:'',vendedor_id:String(user.id),estado_venta:'Venta',estatus_seguimiento:'En proceso',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:'',flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false};
   const ESTADOS_VENTA=['Venta','En espera de autorización','Autorizado','Cancelado'];
 
   const handleClienteChange=async(clienteId)=>{
@@ -2201,7 +2202,7 @@ function VentasModule({user}){
       });
       if(error)throw error;
       // Actualizar status, contacto y vendedor
-      const upd={vendedor_id:form.vendedor_id?parseInt(form.vendedor_id):user.id};
+      const upd={vendedor_id:form.vendedor_id?parseInt(form.vendedor_id):user.id,estatus_seguimiento:form.estatus_seguimiento||'En proceso'};
       if(form.estado_venta&&form.estado_venta!=='Venta') upd.status=form.estado_venta;
       if(form.contacto_id) upd.contacto_cliente_id=parseInt(form.contacto_id);
       await sb.from('proyectos').update(upd).eq('id',r[0].id);
@@ -2228,6 +2229,9 @@ function VentasModule({user}){
         importe:parseFloat(form.importe)||null,
         notas:form.notas||'',
         status:form.estado_venta||form.status||'En venta',
+        estatus_seguimiento:form.estatus_seguimiento||'En proceso',
+        fecha_pago_cliente:form.fecha_pago_cliente||null,
+        fecha_pago_comision:form.fecha_pago_comision||null,
         flag_renovacion:!!form.flag_renovacion,
         flag_prospectado:!!form.flag_prospectado,
         flag_cliente_nuevo:!!form.flag_cliente_nuevo,
@@ -2293,11 +2297,6 @@ function VentasModule({user}){
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <div onClick={()=>setFStatus('pipeline')} className="rounded-2xl p-4 border-2 cursor-pointer transition" style={fStatus==='pipeline'?{borderColor:'#00b5b5',background:'rgba(0,181,181,0.07)'}:{borderColor:'#e5e7eb',background:'white'}}>
-          <div className="flex items-center justify-between"><span className="text-sm text-gray-500">Pipeline activo</span><span>💼</span></div>
-          <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('pipeline')}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{fmt(importeTotal())} sin IVA</p>
-        </div>
         <div onClick={()=>setFStatus('En espera de autorización')} className="rounded-2xl p-4 border-2 cursor-pointer transition" style={fStatus==='En espera de autorización'?{borderColor:'#f59e0b',background:'#fffbeb'}:{borderColor:'#e5e7eb',background:'white'}}>
           <div className="flex items-center justify-between"><span className="text-sm text-gray-500">En espera</span><span>⏳</span></div>
           <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('En espera de autorización')}</p>
@@ -2410,6 +2409,30 @@ function VentasModule({user}){
                 <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
               ))}
             </div>
+            {/* Seguimiento financiero */}
+            <div className="bg-gray-50 rounded-xl p-4 mt-3">
+              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-3">💰 Seguimiento financiero</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="bg-white rounded-xl p-3 border border-gray-100">
+                  <p className="text-xs text-gray-500 mb-1">Estatus seguimiento</p>
+                  {sel.estatus_seguimiento?<Badge text={sel.estatus_seguimiento} color={sel.estatus_seguimiento==='Pagado'?'green':sel.estatus_seguimiento==='Cancelado'?'red':sel.estatus_seguimiento==='Proyecto activo'?'blue':'gray'}/>:<span className="text-xs text-gray-400">—</span>}
+                </div>
+                <div className="bg-white rounded-xl p-3 border border-gray-100">
+                  <p className="text-xs text-gray-500 mb-1">Fecha pago cliente</p>
+                  {esContabilidad
+                    ?<input type="date" defaultValue={sel.fecha_pago_cliente||''} onBlur={async e=>{await sb.from('proyectos').update({fecha_pago_cliente:e.target.value||null}).eq('id',sel.id);load();}} className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-full" style={{borderColor:'#00b5b5'}}/>
+                    :<p className="text-sm font-medium text-gray-800">{sel.fecha_pago_cliente?fmtD(sel.fecha_pago_cliente):'Pendiente'}</p>
+                  }
+                </div>
+                <div className="bg-white rounded-xl p-3 border border-gray-100">
+                  <p className="text-xs text-gray-500 mb-1">Fecha pago comisión</p>
+                  {esContabilidad
+                    ?<input type="date" defaultValue={sel.fecha_pago_comision||''} onBlur={async e=>{await sb.from('proyectos').update({fecha_pago_comision:e.target.value||null}).eq('id',sel.id);load();}} className="border border-gray-200 rounded-lg px-2 py-1 text-xs w-full" style={{borderColor:'#00b5b5'}}/>
+                    :<p className="text-sm font-medium text-gray-800">{sel.fecha_pago_comision?fmtD(sel.fecha_pago_comision):'Pendiente'}</p>
+                  }
+                </div>
+              </div>
+            </div>
             {(sel.flag_renovacion||sel.flag_prospectado||sel.flag_cliente_nuevo||sel.flag_sindicado)&&(
               <div className="bg-amber-50 rounded-xl p-3">
                 <p className="text-xs text-gray-500 mb-2">🏷️ Características de comisión</p>
@@ -2506,6 +2529,13 @@ function VentasModule({user}){
                 </div>
               </div>
 
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Estatus seguimiento</label>
+                <select value={form.estatus_seguimiento||'En proceso'} onChange={e=>setForm(f=>({...f,estatus_seguimiento:e.target.value}))}
+                  className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
+                  {['Proyecto activo','En proceso','Pendiente por autorizar','Cancelado','Pospuesto','Pagado','Cerrado'].map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
               <Sel label="Empresa" value={form.empresa||'SERTA'} onChange={v=>setForm(f=>({...f,empresa:v}))} options={['SERTA','GIPA'].map(x=>({value:x,label:x}))}/>
               <Sel label="Tipo de estudio" value={form.tipo_estudio||''} onChange={v=>setForm(f=>({...f,tipo_estudio:v}))} options={TIPOS_ESTUDIO.map(x=>({value:x,label:x}))}/>
               <Input label="Importe sin IVA" type="number" value={form.importe||''} onChange={v=>setForm(f=>({...f,importe:v}))} placeholder="0.00"/>
@@ -2633,12 +2663,15 @@ function ProyectosModule({user}){
       .in('status',['Autorizado','Activo','Cerrado','Cancelado'])
       .order('numero_proyecto',{ascending:false});
 
-    // Control de acceso: si no es admin/director, solo ve sus proyectos
-    if(!isAdmin){
+    // Control de acceso
+    const isContab=user.perm_finanzas||user.perm_contabilidad;
+    if(!isAdmin&&!isContab){
       const{data:colabsData}=await sb.from('proyecto_colaboradores')
         .select('proyecto_id').eq('empleado_id',user.id);
       const colabIds=(colabsData||[]).map(c=>c.proyecto_id);
-      let orFilter=`created_by.eq.${user.id},pm_id.eq.${user.id},vendedor_id.eq.${user.id}`;
+      // Una vez asignado PM (Activo/Cerrado), solo PM, equipo, dirección, contabilidad
+      // Antes de PM (Autorizado): también el vendedor puede ver
+      let orFilter=`pm_id.eq.${user.id},vendedor_id.eq.${user.id},created_by.eq.${user.id}`;
       if(colabIds.length>0) orFilter+=`,id.in.(${colabIds.join(',')})`;
       query=query.or(orFilter);
     }
@@ -3648,7 +3681,7 @@ function ComisionesModule({user}){
       const[cfgRes,proyRes,usuRes,comRes]=await Promise.all([
         sb.from('config_comisiones').select('clave,valor'),
         sb.from('proyectos').select('id,numero_proyecto,nombre,empresa,status,importe,flag_renovacion,flag_prospectado,flag_cliente_nuevo,flag_sindicado').order('numero_proyecto',{ascending:false}),
-        sb.from('empleados').select('id,nombre,rol').eq('activo',true).order('nombre'),
+        sb.from('empleados').select('id,nombre,rol,perm_ventas').eq('activo',true).order('nombre'),
         sb.from('comisiones').select(
           'id,proyecto_id,vendedor_id,empresa,anio_fiscal,mes_cierre,fecha_cierre,'+
           'monto_cerrado,comision_conecta,costos_directos,'+
@@ -3864,18 +3897,23 @@ function ComisionesModule({user}){
               Vendedor {fVendedores.length>0&&<span className="text-teal-600 font-bold">({fVendedores.length} sel.)</span>}
             </label>
             <div className="flex flex-wrap gap-1">
-              {usuarios.map(u=>{
-                const v=String(u.id);
-                const sel=fVendedores.includes(v);
-                return(
-                  <button key={v} type="button"
-                    onClick={()=>setFVendedores(prev=>sel?prev.filter(x=>x!==v):[...prev,v])}
-                    className="px-2 py-1 rounded-lg text-xs font-medium border transition"
-                    style={sel?{background:'#00b5b5',color:'#fff',borderColor:'#00b5b5'}:{background:'#f9fafb',color:'#6b7280',borderColor:'#e5e7eb'}}>
-                    {u.nombre.split(' ')[0]}
-                  </button>
-                );
-              })}
+              {(()=>{
+                // Solo vendedores con comisiones reales o con perm_ventas
+                const vendIds=new Set(rows.map(r=>String(r.vendedor_id)).filter(Boolean));
+                const vendsConVentas=usuarios.filter(u=>vendIds.has(String(u.id))||u.perm_ventas);
+                return vendsConVentas.map(u=>{
+                  const v=String(u.id);
+                  const sel=fVendedores.includes(v);
+                  return(
+                    <button key={v} type="button"
+                      onClick={()=>setFVendedores(prev=>sel?prev.filter(x=>x!==v):[...prev,v])}
+                      className="px-2 py-1 rounded-lg text-xs font-medium border transition"
+                      style={sel?{background:'#00b5b5',color:'#fff',borderColor:'#00b5b5'}:{background:'#f9fafb',color:'#6b7280',borderColor:'#e5e7eb'}}>
+                      {u.nombre.split(' ').slice(0,2).join(' ')}
+                    </button>
+                  );
+                });
+              })()}
               {fVendedores.length>0&&<button type="button" onClick={()=>setFVendedores([])} className="px-2 py-1 rounded-lg text-xs border" style={{color:'#ef4444',borderColor:'#fca5a5'}}>✕</button>}
             </div>
           </div>
@@ -4333,7 +4371,21 @@ function RequisicionesModule({user}){
       }
 
       const all=reqs||[];
-      setRows(canAll?all:all.filter(r=>String(r.creado_por)===String(user.id)));
+      // Filtrar requisiciones por proyectos accesibles
+      const isContabReq=user.perm_finanzas||user.perm_contabilidad||user.rol==='Administrador'||user.rol==='Director'||user.rol==='Gerente';
+      if(isContabReq){
+        setRows(all);
+      }else{
+        // Solo ver req de proyectos donde soy PM, colabo, o creé la req
+        const myProjIds=new Set();
+        // Get my colabs
+        const{data:myColabs}=await sb.from('proyecto_colaboradores').select('proyecto_id').eq('empleado_id',user.id);
+        (myColabs||[]).forEach(x=>myProjIds.add(String(x.proyecto_id)));
+        // Get projects where I'm PM or creator
+        const{data:myProjs}=await sb.from('proyectos').select('id').or(`pm_id.eq.${user.id},created_by.eq.${user.id},vendedor_id.eq.${user.id}`);
+        (myProjs||[]).forEach(x=>myProjIds.add(String(x.id)));
+        setRows(all.filter(r=>String(r.creado_por)===String(user.id)||myProjIds.has(String(r.proyecto_id))));
+      }
       setProyectos(eProy?[]:proy||[]);
       setProveedores(eProvs?[]:provs||[]);
       const todosEmp=eDirs?[]:dirs||[];
