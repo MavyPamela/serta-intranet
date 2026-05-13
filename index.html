@@ -1944,7 +1944,7 @@ function VentasModule({user}){
     return matchQ&&matchS;
   }),[data,search,fStatus]);
 
-  const efNuevo={nombre:'',cliente_id:'',cliente_nuevo_nombre:'',contacto_id:'',estado_venta:'Venta',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:'',flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false};
+  const efNuevo={nombre:'',cliente_id:'',cliente_nuevo_nombre:'',contacto_id:'',vendedor_id:String(user.id),estado_venta:'Venta',empresa:'SERTA',tipo_estudio:'Cuantitativo',num_pagos:1,anio_fiscal:new Date().getFullYear(),fecha_inicio_venta:new Date().toISOString().split('T')[0],fecha_inicio_proyecto:'',importe:'',notas:'',flag_renovacion:false,flag_prospectado:false,flag_cliente_nuevo:false,flag_sindicado:false};
   const ESTADOS_VENTA=['Venta','En espera de autorización','Autorizado','Cancelado'];
 
   const handleClienteChange=async(clienteId)=>{
@@ -1986,11 +1986,11 @@ function VentasModule({user}){
         p_flag_sindicado:!!form.flag_sindicado,
       });
       if(error)throw error;
-      // Actualizar status y/o contacto si aplica
-      const upd={};
+      // Actualizar status, contacto y vendedor
+      const upd={vendedor_id:form.vendedor_id?parseInt(form.vendedor_id):user.id};
       if(form.estado_venta&&form.estado_venta!=='Venta') upd.status=form.estado_venta;
       if(form.contacto_id) upd.contacto_cliente_id=parseInt(form.contacto_id);
-      if(Object.keys(upd).length>0) await sb.from('proyectos').update(upd).eq('id',r[0].id);
+      await sb.from('proyectos').update(upd).eq('id',r[0].id);
       setMsg(`✅ Proyecto #${r[0].numero_proyecto} registrado en pipeline`);
       await load();
       setTimeout(()=>{setModal(null);setMsg('');},1300);
@@ -2165,7 +2165,8 @@ function VentasModule({user}){
                 ['💳 No. de pagos',sel.num_pagos||'—'],
                 ['📅 Inicio venta',sel.fecha_inicio_venta?fmtD(sel.fecha_inicio_venta):'—'],
                 ['🚀 Inicio proyecto',sel.fecha_inicio_proyecto?fmtD(sel.fecha_inicio_proyecto):'—'],
-                ['👤 Registrado por',empleados.find(e=>e.id===sel.created_by)?.nombre||'—'],
+                ['🧑‍💼 Vendedor',empleados.find(e=>String(e.id)===String(sel.vendedor_id))?.nombre||empleados.find(e=>String(e.id)===String(sel.created_by))?.nombre||'—'],
+                ['👤 Registrado por',empleados.find(e=>String(e.id)===String(sel.created_by))?.nombre||'—'],
               ].map(([k,v])=>(
                 <div key={k} className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500 mb-0.5">{k}</p><p className="text-sm font-medium text-gray-800">{v}</p></div>
               ))}
@@ -2196,7 +2197,24 @@ function VentasModule({user}){
       {(modal==='nuevo'||modal==='editar')&&(
         <Modal title={modal==='nuevo'?'Nuevo proyecto en pipeline':'Editar proyecto'} onClose={()=>setModal(null)} size="xl">
           <form onSubmit={modal==='nuevo'?crearProyecto:editarProyecto}>
-            {modal==='nuevo'&&<p className="text-xs text-gray-400 mb-4 bg-purple-50 rounded-xl px-3 py-2">Se asignará un folio automáticamente. El número de estudio se genera al momento de autorizar la venta. El Director asignará el PM desde el módulo Proyectos.</p>}
+            {modal==='nuevo'&&(
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-xs text-gray-400 bg-purple-50 rounded-xl px-3 py-2 flex-1 mr-3">Se asignará un folio automáticamente. El número de estudio se genera al momento de autorizar la venta.</p>
+                <div className="flex flex-col gap-1 min-w-48">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">🧑‍💼 Vendedor</label>
+                  {canAuthorize?(
+                    <select value={form.vendedor_id||''} onChange={e=>setForm(f=>({...f,vendedor_id:e.target.value}))}
+                      className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
+                      {empleados.map(e=><option key={e.id} value={e.id}>{e.nombre}</option>)}
+                    </select>
+                  ):(
+                    <div className="border border-gray-200 rounded-xl px-3 py-2 bg-teal-50 text-sm font-medium text-gray-800">
+                      {empleados.find(e=>String(e.id)===String(user.id))?.nombre||user.nombre||'—'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <Input label="Nombre del proyecto" value={form.nombre||''} onChange={v=>setForm(f=>({...f,nombre:v}))} required className="md:col-span-2"/>
 
