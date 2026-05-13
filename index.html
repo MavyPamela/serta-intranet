@@ -457,8 +457,9 @@ function Sidebar({user,active,setActive,onLogout}){
 
 // DASHBOARD ─────────────────────────────────────────────────────
 function Dashboard({user}){
-  const[s,setS]=useState({emp:0,vac:0,proy:0,cli:0,pipeline:0,pipelineVal:0,cumples:[],
-    reqsPendientes:[],vacPendientes:[],proyAutorizar:[],comBorradores:0,misVentas:[]});
+  const[s,setS]=useState({proy:0,cumples:[],aniversarios:[],
+    reqsPendientes:[],vacPendientes:[],proyAutorizar:[],comBorradores:0,misVentas:[],
+    esCumple:false,esAniversario:false,anosAntig:0});
   const canAprobar=user.rol==='Administrador'||user.perm_aprobar_req||user.perm_autorizar_proyectos;
   const canAprobarVac=user.rol==='Administrador'||user.perm_aprobar_vacaciones;
   const canVerCom=user.rol==='Administrador'||user.perm_ver_comisiones||user.perm_autorizar_proyectos;
@@ -468,229 +469,295 @@ function Dashboard({user}){
   useEffect(()=>{
     (async()=>{
       const hoy=new Date(); const mesActual=hoy.getMonth()+1; const diaActual=hoy.getDate();
-      const[eRes,vRes,pRes,cRes,cbRes,rqRes,vacRes,proyAutRes,comBorRes,misVentasRes]=await Promise.all([
-        sb.from('empleados').select('id',{count:'exact',head:true}).eq('activo',true),
-        sb.from('vacaciones').select('id',{count:'exact',head:true}).eq('estatus','Pendiente'),
+      const[pRes,cbRes,rqRes,vacRes,proyAutRes,comBorRes,misVentasRes,empsRes]=await Promise.all([
         sb.from('proyectos').select('id',{count:'exact',head:true}).eq('status','Activo'),
-        sb.from('clientes').select('id',{count:'exact',head:true}).eq('activo',true),
-        sb.from('empleados').select('nombre,cumple_dia,cumple_mes,foto_url').eq('activo',true).not('cumple_mes','is',null),
+        sb.from('empleados').select('nombre,cumple_dia,cumple_mes,foto_url,fecha_ingreso').eq('activo',true),
         canAprobar?sb.from('requisiciones').select('id,numero_requisicion,descripcion,total_pago').eq('status','Pendiente').eq('director_id',user.id).order('created_at',{ascending:false}).limit(8):{data:[]},
-        canAprobarVac?sb.from('vacaciones').select('id,tipo,dias,fecha_inicio,fecha_fin,empleado_id').eq('estatus','Pendiente').order('created_at',{ascending:false}).limit(5):{data:[]},
+        canAprobarVac?sb.from('vacaciones').select('id,tipo,dias,fecha_inicio,fecha_fin').eq('estatus','Pendiente').order('created_at',{ascending:false}).limit(5):{data:[]},
         canAprobar?sb.from('proyectos').select('id,nombre,numero_proyecto,importe').in('status',['En venta','Venta','En espera de autorización']).order('created_at',{ascending:false}).limit(5):{data:[]},
         (canVerCom||esContabilidad)?sb.from('comisiones').select('id',{count:'exact',head:true}).eq('status','Borrador'):{data:null,count:0},
         esVendedor?sb.from('proyectos').select('id,nombre,status,importe,numero_proyecto').in('status',['En venta','Venta','En espera de autorización','Autorizado']).or(`vendedor_id.eq.${user.id},created_by.eq.${user.id}`).order('created_at',{ascending:false}).limit(5):{data:[]},
+        sb.from('empleados').select('nombre,fecha_ingreso,foto_url').eq('activo',true).not('fecha_ingreso','is',null),
       ]);
-      const cumples=(cbRes.data||[]).filter(e=>e.cumple_mes===mesActual);
-      const pipeline=(proyAutRes.data||[]);
-      const pipelineVal=pipeline.reduce((s,p)=>s+(p.importe||0),0);
-      // Detectar si HOY es el cumpleaños o aniversario del usuario actual
-      const userEmp=(cbRes.data||[]).find(e=>e.nombre===user.nombre);
+      const emps=cbRes.data||[];
+      const cumples=emps.filter(e=>e.cumple_mes===mesActual);
+      // Aniversarios este mes
+      const aniversarios=(empsRes.data||[]).filter(e=>{
+        if(!e.fecha_ingreso)return false;
+        const ing=new Date(e.fecha_ingreso);
+        return (ing.getMonth()+1)===mesActual && ing.getFullYear()!==hoy.getFullYear();
+      }).map(e=>{
+        const ing=new Date(e.fecha_ingreso);
+        return{...e, anos:hoy.getFullYear()-ing.getFullYear()};
+      });
+      // Cumpleaños/aniversario del usuario actual
+      const userEmp=emps.find(e=>e.nombre===user.nombre);
       const esCumple=userEmp&&userEmp.cumple_dia===diaActual&&userEmp.cumple_mes===mesActual;
-      // Aniversario: buscar fecha_ingreso del empleado actual
       const{data:empData}=await sb.from('empleados').select('fecha_ingreso').eq('id',user.id).single();
-      const fechaIngreso=empData?.fecha_ingreso;
       let esAniversario=false; let anosAntig=0;
-      if(fechaIngreso){
-        const ing=new Date(fechaIngreso);
-        esAniversario=ing.getDate()===diaActual&&(ing.getMonth()+1)===mesActual;
+      if(empData?.fecha_ingreso){
+        const ing=new Date(empData.fecha_ingreso);
+        esAniversario=ing.getDate()===diaActual&&(ing.getMonth()+1)===mesActual&&ing.getFullYear()!==hoy.getFullYear();
         anosAntig=hoy.getFullYear()-ing.getFullYear();
       }
       setS({
-        emp:eRes.count||0, vac:vRes.count||0, proy:pRes.count||0, cli:cRes.count||0,
-        pipeline:pipeline.length, pipelineVal, cumples,
+        proy:pRes.count||0, cumples, aniversarios,
         reqsPendientes:rqRes.data||[], vacPendientes:vacRes.data||[],
-        proyAutorizar:pipeline, comBorradores:comBorRes.count||0, misVentas:misVentasRes.data||[],
-        esCumple, esAniversario, anosAntig,
+        proyAutorizar:proyAutRes.data||[], comBorradores:comBorRes.count||0,
+        misVentas:misVentasRes.data||[], esCumple, esAniversario, anosAntig,
       });
     })();
-  },[canAprobar,canAprobarVac,canVerCom,esVendedor,esContabilidad,user.id]);
+  },[canAprobar,canAprobarVac,canVerCom,esVendedor,esContabilidad,user.id,user.nombre]);
+
   const h=new Date().getHours();
   const sal=h<12?'Buenos días':h<18?'Buenas tardes':'Buenas noches';
-  const SC=({title,value,sub,icon,col='#00b5b5'})=>(
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-gray-500 font-medium uppercase tracking-wide">{title}</span>
-        <span className="text-lg">{icon}</span>
-      </div>
-      <p className="text-2xl font-bold" style={{color:col}}>{value}</p>
-      {sub&&<p className="text-xs text-gray-400 mt-1">{sub}</p>}
-    </div>
-  );
-  const PendCard=({title,items,emptyMsg,color='#f59e0b',renderItem})=>(
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-3">
-      <div className="flex items-center gap-2 mb-3">
-        <p className="text-xs font-bold text-gray-600 uppercase tracking-wide flex-1">{title}</p>
-        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{background:color+'22',color}}>{items.length}</span>
-      </div>
-      {items.length===0?<p className="text-xs text-gray-400 italic">{emptyMsg}</p>:
-        <div className="space-y-2">{items.map((it,i)=>renderItem(it,i))}</div>}
-    </div>
-  );
+  const MESES_N=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
   return(
-    <div className="p-6 fade">
-      {/* Banners de felicitación */}
+    <div className="fade" style={{minHeight:'100vh',background:'#f4f6f9'}}>
+
+      {/* ── Banners de felicitación ── */}
       {s.esCumple&&(
-        <div className="rounded-2xl p-5 mb-5 text-center" style={{background:'linear-gradient(135deg,#fce7f3,#fdf2f8)',border:'2px solid #f9a8d4'}}>
-          <p className="text-3xl mb-1">🎂🎉</p>
-          <p className="text-lg font-bold text-pink-700">¡Feliz cumpleaños, {user.nombre.split(' ')[0]}!</p>
-          <p className="text-sm text-pink-500 mt-1">Todo el equipo de SERTA te desea un día muy especial. ¡Que los cumplas muy feliz!</p>
+        <div style={{background:'linear-gradient(135deg,#fce7f3,#fdf2f8)',borderBottom:'2px solid #f9a8d4',padding:'18px 32px',display:'flex',alignItems:'center',gap:'16px'}}>
+          <span style={{fontSize:'2rem'}}>🎂</span>
+          <div>
+            <p style={{fontWeight:700,color:'#9d174d',fontSize:'1rem'}}>¡Feliz cumpleaños, {user.nombre.split(' ')[0]}!</p>
+            <p style={{color:'#be185d',fontSize:'0.82rem'}}>Todo el equipo de SERTA te desea un día muy especial. ¡Que los cumplas muy feliz!</p>
+          </div>
         </div>
       )}
       {s.esAniversario&&!s.esCumple&&(
-        <div className="rounded-2xl p-5 mb-5 text-center" style={{background:'linear-gradient(135deg,#e0f2fe,#f0f9ff)',border:'2px solid #7dd3fc'}}>
-          <p className="text-3xl mb-1">⭐🏆</p>
-          <p className="text-lg font-bold text-blue-700">¡{s.anosAntig} {s.anosAntig===1?'año':'años'} con nosotros, {user.nombre.split(' ')[0]}!</p>
-          <p className="text-sm text-blue-500 mt-1">Gracias por tu compromiso y dedicación. ¡Tu trayectoria es parte fundamental de SERTA!</p>
+        <div style={{background:'linear-gradient(135deg,#eff6ff,#dbeafe)',borderBottom:'2px solid #93c5fd',padding:'18px 32px',display:'flex',alignItems:'center',gap:'16px'}}>
+          <span style={{fontSize:'2rem'}}>⭐</span>
+          <div>
+            <p style={{fontWeight:700,color:'#1e40af',fontSize:'1rem'}}>{s.anosAntig} {s.anosAntig===1?'año':'años'} con nosotros, {user.nombre.split(' ')[0]}</p>
+            <p style={{color:'#1d4ed8',fontSize:'0.82rem'}}>Gracias por tu compromiso y dedicación. ¡Tu trayectoria es parte esencial de SERTA!</p>
+          </div>
         </div>
       )}
-      {/* Header */}
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-gray-800">{sal}, {user.nombre.split(' ')[0]} 👋</h1>
-        <p className="text-gray-500 text-sm mt-1">{new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
-      </div>
 
-      {/* Layout dos columnas */}
-      <div className="flex gap-5" style={{alignItems:'flex-start'}}>
-
-        {/* ── Columna izquierda (KPIs + cumpleaños) ── */}
-        <div className="flex-1 min-w-0">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-            <SC title="Empleados" value={s.emp} icon="👥" col="#3b82f6"/>
-            <SC title="Proy. activos" value={s.proy} icon="🏗️" col="#00b5b5"/>
-            <SC title="Pipeline" value={s.pipeline} sub={fmt(s.pipelineVal)} icon="💼" col="#8b5cf6"/>
-            <SC title="Clientes" value={s.cli} icon="🤝" col="#10b981"/>
-          </div>
-
-          {/* Cumpleaños del mes */}
-          {s.cumples.length>0&&(
-            <div className="bg-white rounded-2xl border border-pink-100 p-4 mb-4">
-              <p className="text-xs font-bold text-pink-600 uppercase tracking-wide mb-3">🎂 Cumpleaños este mes</p>
-              <div className="flex flex-wrap gap-2">
-                {s.cumples.map((e,i)=>(
-                  <div key={i} className="flex items-center gap-2 bg-pink-50 rounded-xl px-3 py-2">
-                    <Avatar nombre={e.nombre} foto_url={e.foto_url}/>
-                    <div>
-                      <p className="text-xs font-semibold text-gray-800">{e.nombre.split(' ')[0]} {e.nombre.split(' ')[1]||''}</p>
-                      <p className="text-xs text-gray-500">{e.cumple_dia} {['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][(e.cumple_mes||1)-1]}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Mis ventas activas (vendedores) */}
-          {esVendedor&&s.misVentas.length>0&&(
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
-              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-3">💼 Mis ventas activas</p>
-              <div className="space-y-2">
-                {s.misVentas.map(p=>(
-                  <div key={p.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                    <div>
-                      <p className="text-sm font-medium text-gray-800">{p.nombre}</p>
-                      <p className="text-xs text-gray-400">#{p.numero_proyecto}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs font-semibold" style={{color:'#00b5b5'}}>{fmt(p.importe||0)}</p>
-                      <span className="text-xs px-2 py-0.5 rounded-full" style={{background:p.status==='Autorizado'?'#d1fae5':p.status==='En espera de autorización'?'#fef3c7':'#ede9fe',color:p.status==='Autorizado'?'#065f46':p.status==='En espera de autorización'?'#92400e':'#5b21b6'}}>{p.status}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Módulos */}
-          <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-            <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">Módulos disponibles</p>
-            <div className="grid grid-cols-3 gap-2">
-              {MODS.filter(m=>m.id!=='inicio').map(m=>{
-                const ok=!m.perm||user.rol==='Administrador'||user[m.perm];
-                return ok?<div key={m.id} className="bg-gray-50 hover:bg-teal-50 rounded-xl p-3 border border-gray-100 hover:border-teal-200 transition cursor-default text-center">
-                  <div className="text-xl mb-1">{m.icon}</div>
-                  <p className="text-xs font-medium text-gray-600">{m.label}</p>
-                </div>:null;
-              })}
-            </div>
+      {/* ── Hero ── */}
+      <div style={{background:'linear-gradient(135deg,#1a252f 0%,#2c3e50 60%,#3d5166 100%)',padding:'28px 32px 32px',position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',top:'-40px',right:'-40px',width:'260px',height:'260px',borderRadius:'50%',border:'1px solid rgba(0,181,181,0.12)'}}/>
+        <div style={{position:'absolute',bottom:'-30px',left:'40%',width:'160px',height:'160px',borderRadius:'50%',border:'1px solid rgba(0,181,181,0.08)'}}/>
+        <div style={{position:'relative'}}>
+          <p style={{color:'rgba(255,255,255,0.5)',fontSize:'0.82rem',marginBottom:'4px'}}>{sal}, <span style={{color:'white',fontWeight:600}}>{user.nombre.split(' ')[0]}</span></p>
+          <h1 style={{color:'white',fontSize:'1.75rem',fontWeight:800,lineHeight:1.2,marginBottom:'6px'}}>Bienvenido a SERTA Intranet</h1>
+          <p style={{color:'rgba(255,255,255,0.35)',fontSize:'0.78rem'}}>{new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
+          <div style={{marginTop:'16px',display:'flex',alignItems:'center',gap:'8px'}}>
+            <div style={{height:'2px',width:'32px',borderRadius:'2px',background:'#00b5b5'}}/>
+            <p style={{fontSize:'0.6rem',fontWeight:700,letterSpacing:'0.2em',color:'#00b5b5'}}>INTELLIGENCE PARTNER</p>
           </div>
         </div>
+      </div>
 
-        {/* ── Columna derecha (Pendientes por rol) ── */}
-        <div style={{width:'320px',flexShrink:0}}>
-          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-3">⚡ Mis pendientes</p>
+      {/* ── Layout principal ── */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 320px',gap:'20px',padding:'24px',alignItems:'start'}}>
 
-          {/* Proyectos por autorizar (dirección) */}
-          {canAprobar&&(
-            <PendCard title="Proyectos por autorizar" items={s.proyAutorizar} emptyMsg="Sin proyectos pendientes de autorización" color="#8b5cf6"
-              renderItem={(p,i)=>(
-                <div key={i} className="flex items-center justify-between bg-purple-50 rounded-xl px-3 py-2">
-                  <div>
-                    <p className="text-xs font-semibold text-gray-800">{p.nombre}</p>
-                    <p className="text-xs text-gray-400">#{p.numero_proyecto}</p>
+        {/* ════ COLUMNA IZQUIERDA ════ */}
+        <div style={{display:'flex',flexDirection:'column',gap:'20px'}}>
+
+          {/* Misión · Visión · Filosofía */}
+          <div style={{background:'white',borderRadius:'16px',border:'1px solid #f1f5f9',padding:'20px',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'16px'}}>
+              <div style={{width:'3px',height:'18px',borderRadius:'2px',background:'linear-gradient(180deg,#00b5b5,#008a8a)'}}/>
+              <p style={{fontSize:'0.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.18em',color:'#6b7280'}}>Identidad Corporativa</p>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'14px'}}>
+              <PillarCard icon="🎯" titulo="Nuestra Misión" tagline="Por qué existimos"
+                accentBg="linear-gradient(135deg,#1a252f,#2c3e50)"
+                desc="Ayudamos a las empresas a tomar decisiones estratégicas con inteligencia de mercados confiable y óptima. Integramos metodologías de vanguardia con tecnología avanzada para ofrecer soluciones perfectamente sustentadas."/>
+              <PillarCard icon="🔭" titulo="Nuestra Visión" tagline="A dónde vamos"
+                accentBg="linear-gradient(135deg,#007f7f,#00b5b5)"
+                desc="Ser empresa referencia en inteligencia de mercados en México y los países donde trabajemos, reconocida por la confiabilidad, innovación y valor estratégico de nuestras soluciones para la toma de decisiones."/>
+              <PillarCard icon="💬" titulo="Nuestra Filosofía" tagline="Cómo lo hacemos"
+                accentBg="linear-gradient(135deg,#3d5166,#4a6177)"
+                desc="Somos una opción inteligente. Combinamos experiencia, calidad y empatía. Creemos en analizar a fondo para proponer soluciones claras y fáciles de entender. Profundizamos para que lo complejo se vuelva simple."/>
+            </div>
+          </div>
+
+          {/* Valores */}
+          <div style={{background:'white',borderRadius:'16px',border:'1px solid #f1f5f9',padding:'20px',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+            <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'16px'}}>
+              <div style={{width:'3px',height:'18px',borderRadius:'2px',background:'linear-gradient(180deg,#00b5b5,#008a8a)'}}/>
+              <p style={{fontSize:'0.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.18em',color:'#6b7280'}}>Nuestros Valores</p>
+              <p style={{fontSize:'0.65rem',color:'#d1d5db',marginLeft:'4px'}}>· pasa el mouse para leer</p>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'10px'}}>
+              {[
+                {icon:'🤝',titulo:'Confianza',desc:'Trabajamos con transparencia y compromiso, generando relaciones basadas en la confianza mutua y en información precisa y oportuna.'},
+                {icon:'⚖️',titulo:'Integridad',desc:'Nos guiamos por la honestidad y la ética en cada decisión, asegurando que cada análisis refleje fielmente la realidad del mercado.'},
+                {icon:'💡',titulo:'Innovación',desc:'Nos mantenemos a la vanguardia con capacitación continua y herramientas tecnológicas de última generación para soluciones eficientes.'},
+                {icon:'🔒',titulo:'Confidencialidad',desc:'La información es un activo estratégico. Operamos bajo un estricto código de ética que garantiza la protección de los datos de nuestros clientes.'},
+                {icon:'🔗',titulo:'Sinergia',desc:'Fomentamos un entorno donde las habilidades de cada persona se combinan para generar un impacto mayor en nuestros clientes y proyectos.'},
+                {icon:'🌿',titulo:'Bienestar',desc:'Promovemos el equilibrio entre vida profesional y personal — la salud y la felicidad del equipo son esenciales para nuestro éxito colectivo.'},
+              ].map((v,i)=><ValorCard key={i} {...v}/>)}
+            </div>
+          </div>
+
+          {/* Política de Calidad */}
+          <CalidadCard/>
+
+          {/* Celebraciones del mes */}
+          {(s.cumples.length>0||s.aniversarios.length>0)&&(
+            <div style={{background:'white',borderRadius:'16px',border:'1px solid #f1f5f9',padding:'20px',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+              <div style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'16px'}}>
+                <div style={{width:'3px',height:'18px',borderRadius:'2px',background:'linear-gradient(180deg,#f472b6,#fb7185)'}}/>
+                <p style={{fontSize:'0.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.18em',color:'#6b7280'}}>Celebraciones de {MESES_N[new Date().getMonth()]}</p>
+              </div>
+              {s.cumples.length>0&&(
+                <div style={{marginBottom:s.aniversarios.length>0?'16px':0}}>
+                  <p style={{fontSize:'0.7rem',fontWeight:600,color:'#9d174d',marginBottom:'10px'}}>🎂 Cumpleaños</p>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
+                    {s.cumples.map((e,i)=>(
+                      <div key={i} style={{display:'flex',alignItems:'center',gap:'8px',background:'#fdf2f8',borderRadius:'10px',padding:'8px 12px',border:'1px solid #fbcfe8'}}>
+                        <Avatar nombre={e.nombre} foto_url={e.foto_url}/>
+                        <div>
+                          <p style={{fontSize:'0.78rem',fontWeight:600,color:'#1f2937'}}>{e.nombre.split(' ').slice(0,2).join(' ')}</p>
+                          <p style={{fontSize:'0.68rem',color:'#be185d'}}>{e.cumple_dia} de {MESES_N[(e.cumple_mes||1)-1]}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-xs font-bold text-purple-700">{fmt(p.importe||0)}</p>
                 </div>
-              )}/>
-          )}
-
-          {/* Requisiciones por autorizar */}
-          {canAprobar&&(
-            <PendCard title="Requisiciones por autorizar" items={s.reqsPendientes} emptyMsg="Sin requisiciones pendientes" color="#f59e0b"
-              renderItem={(r,i)=>(
-                <div key={i} className="flex items-center justify-between bg-amber-50 rounded-xl px-3 py-2">
-                  <div>
-                    <p className="text-xs font-semibold text-gray-800">{r.descripcion||`Req #${r.numero_requisicion}`}</p>
-                    <p className="text-xs text-gray-400">#{r.numero_requisicion}</p>
+              )}
+              {s.aniversarios.length>0&&(
+                <div>
+                  <p style={{fontSize:'0.7rem',fontWeight:600,color:'#1e40af',marginBottom:'10px'}}>⭐ Aniversarios</p>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:'8px'}}>
+                    {s.aniversarios.map((e,i)=>(
+                      <div key={i} style={{display:'flex',alignItems:'center',gap:'8px',background:'#eff6ff',borderRadius:'10px',padding:'8px 12px',border:'1px solid #bfdbfe'}}>
+                        <Avatar nombre={e.nombre} foto_url={e.foto_url}/>
+                        <div>
+                          <p style={{fontSize:'0.78rem',fontWeight:600,color:'#1f2937'}}>{e.nombre.split(' ').slice(0,2).join(' ')}</p>
+                          <p style={{fontSize:'0.68rem',color:'#1d4ed8'}}>{e.anos} {e.anos===1?'año':'años'} en SERTA</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-xs font-bold text-amber-700">{fmt(r.total_pago)}</p>
                 </div>
-              )}/>
-          )}
-
-          {/* Vacaciones por aprobar */}
-          {canAprobarVac&&(
-            <PendCard title="Vacaciones por aprobar" items={s.vacPendientes} emptyMsg="Sin solicitudes pendientes" color="#06b6d4"
-              renderItem={(v,i)=>(
-                <div key={i} className="flex items-center justify-between bg-cyan-50 rounded-xl px-3 py-2">
-                  <div>
-                    <p className="text-xs font-semibold text-gray-800">{v.tipo}</p>
-                    <p className="text-xs text-gray-400">{fmtD(v.fecha_inicio)} → {fmtD(v.fecha_fin)}</p>
-                  </div>
-                  <span className="text-xs font-bold text-cyan-700">{v.dias} días</span>
-                </div>
-              )}/>
-          )}
-
-          {/* Comisiones en borrador (contabilidad / admin) */}
-          {(canVerCom||esContabilidad)&&(
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-3">
-              <p className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-2">💲 Comisiones en borrador</p>
-              {s.comBorradores===0
-                ?<p className="text-xs text-gray-400 italic">Sin borradores pendientes</p>
-                :<div className="flex items-center gap-3 bg-teal-50 rounded-xl px-3 py-3">
-                  <span className="text-2xl font-bold" style={{color:'#00b5b5'}}>{s.comBorradores}</span>
-                  <p className="text-xs text-gray-600">comisión{s.comBorradores!==1?'es':''} pendiente{s.comBorradores!==1?'s':''} de revisar en el módulo Comisiones</p>
-                </div>
-              }
+              )}
             </div>
           )}
 
-          {/* Si no hay nada pendiente */}
-          {!canAprobar&&!canAprobarVac&&!canVerCom&&!esContabilidad&&!esVendedor&&(
-            <div className="bg-gray-50 rounded-2xl border border-gray-100 p-4 text-center">
-              <p className="text-2xl mb-2">✅</p>
-              <p className="text-xs text-gray-500">Todo al día — sin pendientes</p>
+          <p style={{textAlign:'center',fontSize:'0.68rem',color:'#d1d5db',paddingBottom:'4px'}}>© {new Date().getFullYear()} SERTA de México · Confidencial · Uso interno</p>
+        </div>
+
+        {/* ════ COLUMNA DERECHA — Panel ejecutivo ════ */}
+        <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
+
+          {/* Stat: proyectos activos */}
+          <div style={{background:'linear-gradient(135deg,#1a252f,#2c3e50)',borderRadius:'16px',padding:'18px 20px',color:'white'}}>
+            <p style={{fontSize:'0.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.15em',color:'rgba(255,255,255,0.45)',marginBottom:'6px'}}>Proyectos activos</p>
+            <div style={{display:'flex',alignItems:'flex-end',gap:'8px'}}>
+              <p style={{fontSize:'2.8rem',fontWeight:800,lineHeight:1,color:'#00d0d0'}}>{s.proy}</p>
+              <p style={{fontSize:'0.75rem',color:'rgba(255,255,255,0.4)',marginBottom:'6px'}}>en curso</p>
             </div>
-          )}
+          </div>
+
+          {/* Panel pendientes */}
+          <div style={{background:'white',borderRadius:'16px',border:'1px solid #f1f5f9',overflow:'hidden',boxShadow:'0 1px 4px rgba(0,0,0,0.04)'}}>
+            <div style={{background:'#1a252f',padding:'14px 18px',display:'flex',alignItems:'center',gap:'8px'}}>
+              <span style={{fontSize:'0.9rem'}}>⚡</span>
+              <p style={{fontSize:'0.65rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.15em',color:'rgba(255,255,255,0.7)'}}>Mis pendientes</p>
+            </div>
+            <div style={{padding:'12px',display:'flex',flexDirection:'column',gap:'8px'}}>
+
+              {/* Proyectos por autorizar */}
+              {canAprobar&&(
+                <div style={{borderRadius:'10px',border:'1px solid #ede9fe',overflow:'hidden'}}>
+                  <div style={{background:'#f5f3ff',padding:'8px 12px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <p style={{fontSize:'0.68rem',fontWeight:700,color:'#5b21b6',textTransform:'uppercase',letterSpacing:'0.08em'}}>Proyectos · autorizar</p>
+                    <span style={{background:'#7c3aed',color:'white',fontSize:'0.65rem',fontWeight:700,borderRadius:'99px',padding:'1px 7px'}}>{s.proyAutorizar.length}</span>
+                  </div>
+                  {s.proyAutorizar.length===0
+                    ?<p style={{padding:'8px 12px',fontSize:'0.72rem',color:'#9ca3af',fontStyle:'italic'}}>Sin pendientes</p>
+                    :<div>{s.proyAutorizar.map((p,i)=>(
+                      <div key={i} style={{padding:'8px 12px',borderTop:'1px solid #f3f4f6',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                        <div><p style={{fontSize:'0.75rem',fontWeight:600,color:'#1f2937'}}>{p.nombre}</p><p style={{fontSize:'0.65rem',color:'#9ca3af'}}>#{p.numero_proyecto}</p></div>
+                        <p style={{fontSize:'0.72rem',fontWeight:700,color:'#7c3aed'}}>{fmt(p.importe||0)}</p>
+                      </div>
+                    ))}</div>
+                  }
+                </div>
+              )}
+
+              {/* Requisiciones */}
+              {canAprobar&&(
+                <div style={{borderRadius:'10px',border:'1px solid #fef3c7',overflow:'hidden'}}>
+                  <div style={{background:'#fffbeb',padding:'8px 12px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <p style={{fontSize:'0.68rem',fontWeight:700,color:'#92400e',textTransform:'uppercase',letterSpacing:'0.08em'}}>Requisiciones · autorizar</p>
+                    <span style={{background:'#d97706',color:'white',fontSize:'0.65rem',fontWeight:700,borderRadius:'99px',padding:'1px 7px'}}>{s.reqsPendientes.length}</span>
+                  </div>
+                  {s.reqsPendientes.length===0
+                    ?<p style={{padding:'8px 12px',fontSize:'0.72rem',color:'#9ca3af',fontStyle:'italic'}}>Sin pendientes</p>
+                    :<div>{s.reqsPendientes.map((r,i)=>(
+                      <div key={i} style={{padding:'8px 12px',borderTop:'1px solid #f3f4f6',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                        <div><p style={{fontSize:'0.75rem',fontWeight:600,color:'#1f2937'}}>{r.descripcion||'Req #'+r.numero_requisicion}</p><p style={{fontSize:'0.65rem',color:'#9ca3af'}}>#{r.numero_requisicion}</p></div>
+                        <p style={{fontSize:'0.72rem',fontWeight:700,color:'#d97706'}}>{fmt(r.total_pago)}</p>
+                      </div>
+                    ))}</div>
+                  }
+                </div>
+              )}
+
+              {/* Vacaciones */}
+              {canAprobarVac&&(
+                <div style={{borderRadius:'10px',border:'1px solid #cffafe',overflow:'hidden'}}>
+                  <div style={{background:'#ecfeff',padding:'8px 12px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <p style={{fontSize:'0.68rem',fontWeight:700,color:'#155e75',textTransform:'uppercase',letterSpacing:'0.08em'}}>Vacaciones · aprobar</p>
+                    <span style={{background:'#0891b2',color:'white',fontSize:'0.65rem',fontWeight:700,borderRadius:'99px',padding:'1px 7px'}}>{s.vacPendientes.length}</span>
+                  </div>
+                  {s.vacPendientes.length===0
+                    ?<p style={{padding:'8px 12px',fontSize:'0.72rem',color:'#9ca3af',fontStyle:'italic'}}>Sin pendientes</p>
+                    :<div>{s.vacPendientes.map((v,i)=>(
+                      <div key={i} style={{padding:'8px 12px',borderTop:'1px solid #f3f4f6',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                        <div><p style={{fontSize:'0.75rem',fontWeight:600,color:'#1f2937'}}>{v.tipo}</p><p style={{fontSize:'0.65rem',color:'#9ca3af'}}>{fmtD(v.fecha_inicio)} → {fmtD(v.fecha_fin)}</p></div>
+                        <span style={{fontSize:'0.7rem',fontWeight:700,color:'#0891b2'}}>{v.dias}d</span>
+                      </div>
+                    ))}</div>
+                  }
+                </div>
+              )}
+
+              {/* Comisiones en borrador */}
+              {(canVerCom||esContabilidad)&&s.comBorradores>0&&(
+                <div style={{borderRadius:'10px',border:'1px solid #d1fae5',background:'#ecfdf5',padding:'10px 12px',display:'flex',alignItems:'center',gap:'10px'}}>
+                  <span style={{fontSize:'1.5rem',fontWeight:800,color:'#00b5b5'}}>{s.comBorradores}</span>
+                  <div><p style={{fontSize:'0.72rem',fontWeight:600,color:'#065f46'}}>Comisión{s.comBorradores!==1?'es':''} en borrador</p><p style={{fontSize:'0.65rem',color:'#6b7280'}}>Pendiente{s.comBorradores!==1?'s':''} de revisar</p></div>
+                </div>
+              )}
+
+              {/* Mis ventas (vendedor) */}
+              {esVendedor&&s.misVentas.length>0&&(
+                <div style={{borderRadius:'10px',border:'1px solid #e0f2fe',overflow:'hidden'}}>
+                  <div style={{background:'#f0f9ff',padding:'8px 12px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <p style={{fontSize:'0.68rem',fontWeight:700,color:'#075985',textTransform:'uppercase',letterSpacing:'0.08em'}}>Mis ventas activas</p>
+                    <span style={{background:'#0284c7',color:'white',fontSize:'0.65rem',fontWeight:700,borderRadius:'99px',padding:'1px 7px'}}>{s.misVentas.length}</span>
+                  </div>
+                  <div>{s.misVentas.map((p,i)=>(
+                    <div key={i} style={{padding:'8px 12px',borderTop:'1px solid #f3f4f6',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <div><p style={{fontSize:'0.75rem',fontWeight:600,color:'#1f2937'}}>{p.nombre}</p><p style={{fontSize:'0.65rem',color:'#9ca3af'}}>{p.status}</p></div>
+                      <p style={{fontSize:'0.72rem',fontWeight:700,color:'#0284c7'}}>{fmt(p.importe||0)}</p>
+                    </div>
+                  ))}</div>
+                </div>
+              )}
+
+              {!canAprobar&&!canAprobarVac&&!canVerCom&&!esContabilidad&&!esVendedor&&(
+                <div style={{textAlign:'center',padding:'16px 0'}}>
+                  <p style={{fontSize:'1.5rem',marginBottom:'6px'}}>✅</p>
+                  <p style={{fontSize:'0.75rem',color:'#9ca3af'}}>Todo al día — sin pendientes</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════
-// RR.HH. — EMPLEADOS
-// ═══════════════════════════════════════════════════════════════
 function EmpleadosTab({user}){
   const[data,setData]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -4555,7 +4622,7 @@ SERTA de México`
         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 mb-4"/>
 
       {/* Tabla */}
-      {filt.length===0?<Empty msg="Sin requisiciones con estos filtros"/>:(
+      {filtered.length===0?<Empty msg="Sin requisiciones con estos filtros"/:(
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -4569,7 +4636,7 @@ SERTA de México`
                 <th className="px-4 py-3 text-right">Acciones</th>
               </tr></thead>
               <tbody className="divide-y divide-gray-50">
-                {filt.map(r=>{
+                {filtered.map(r=>{
                   const sc=r.status==='Pendiente'?'orange':r.status==='Autorizada'?'blue':r.status==='Pago en proceso'?'purple':r.status==='Pagada'?'green':r.status==='Cancelada'?'red':'gray';
                   return(<tr key={r.id} className="hover:bg-gray-50/70 transition">
                     <td className="px-4 py-3 font-mono font-bold text-gray-700">#{r.numero_requisicion}</td>
