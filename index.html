@@ -3388,7 +3388,7 @@ function ComisionesModule({user}){
   const[fAnio,setFAnio]=useState('');
   const[fEmpresa,setFEmpresa]=useState('');
   const[fVendedor,setFVendedor]=useState('');
-  const[fMes,setFMes]=useState('');
+  const[fMeses,setFMeses]=useState([]);
 
   // Form
   const initForm=()=>({proyecto_id:'',vendedor_id:canSeeAll?'':String(user.id),
@@ -3452,10 +3452,10 @@ function ComisionesModule({user}){
       if(fAnio&&String(r.anio_fiscal)!==fAnio)return false;
       if(fEmpresa&&r.empresa!==fEmpresa)return false;
       if(fVendedor&&String(r.vendedor_id)!==fVendedor)return false;
-      if(fMes&&String(r.mes_cierre)!==fMes)return false;
+      if(fMeses.length>0&&!fMeses.includes(String(r.mes_cierre)))return false;
       return true;
     });
-  },[rows,fAnio,fEmpresa,fVendedor,fMes]);
+  },[rows,fAnio,fEmpresa,fVendedor,fMeses]);
 
   // KPIs
   const kpis=useMemo(()=>{
@@ -3601,8 +3601,26 @@ function ComisionesModule({user}){
         <Sel label="Año fiscal" value={fAnio} onChange={setFAnio} options={[{value:'',label:'Todos'}, ...anios.map(a=>({value:a,label:a}))]}/>
         <Sel label="Empresa" value={fEmpresa} onChange={setFEmpresa} options={[{value:'',label:'Todas'},{value:'SERTA',label:'SERTA'},{value:'GIPA',label:'GiPA'}]}/>
         {canSeeAll&&<Sel label="Vendedor" value={fVendedor} onChange={setFVendedor} options={[{value:'',label:'Todos'},...usuarios.map(u=>({value:String(u.id),label:u.nombre}))]}/>}
-        <Sel label="Mes" value={fMes} onChange={setFMes} options={[{value:'',label:'Todos'},...MESES.map((m,i)=>({value:String(i+1),label:m}))]}/>
-        <Btn color="gray" size="sm" onClick={()=>{setFAnio('');setFEmpresa('');setFVendedor('');setFMes('');}}>Limpiar</Btn>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Mes {fMeses.length>0&&<span className="text-teal-600 font-bold">({fMeses.length} sel.)</span>}
+          </label>
+          <div className="flex flex-wrap gap-1">
+            {MESES.map((m,i)=>{
+              const v=String(i+1);
+              const sel=fMeses.includes(v);
+              return(
+                <button key={v} type="button"
+                  onClick={()=>setFMeses(prev=>sel?prev.filter(x=>x!==v):[...prev,v])}
+                  className="px-2 py-1 rounded-lg text-xs font-medium border transition"
+                  style={sel?{background:'#00b5b5',color:'#fff',borderColor:'#00b5b5'}:{background:'#f9fafb',color:'#6b7280',borderColor:'#e5e7eb'}}>
+                  {m}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <Btn color="gray" size="sm" onClick={()=>{setFAnio('');setFEmpresa('');setFVendedor('');setFMeses([]);}}>Limpiar</Btn>
       </div>
 
       {/* KPI Cards */}
