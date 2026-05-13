@@ -1980,7 +1980,7 @@ function VentasModule({user}){
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-5">
         <div onClick={()=>setFStatus('En espera de autorización')} className="rounded-2xl p-4 border-2 cursor-pointer transition" style={fStatus==='En espera de autorización'?{borderColor:'#f59e0b',background:'#fffbeb'}:{borderColor:'#e5e7eb',background:'white'}}>
           <div className="flex items-center justify-between"><span className="text-sm text-gray-500">En espera</span><span>⏳</span></div>
           <p className="text-2xl font-bold mt-1 text-gray-800">{totalPor('En espera de autorización')}</p>
