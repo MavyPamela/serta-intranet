@@ -3398,28 +3398,49 @@ function ComisionesModule({user}){
     notas:'',status:'Borrador'});
   const[form,setForm]=useState(initForm());
 
+  const[loadError,setLoadError]=useState('');
+
   const load=useCallback(async()=>{
     setLoading(true);
-    const[{data:cfgData},{data:proy},{data:usu},{data:com}]=await Promise.all([
-      sb.from('config_comisiones').select('clave,valor'),
-      sb.from('proyectos').select('id,numero_proyecto,nombre,empresa,status,importe,flag_renovacion,flag_prospectado,flag_cliente_nuevo,flag_sindicado').in('status',['Cerrado','Activo']).order('numero_proyecto',{ascending:false}),
-      sb.from('empleados').select('id,nombre,rol').eq('activo',true).order('nombre'),
-      sb.from('comisiones').select(`
-        id,proyecto_id,vendedor_id,empresa,anio_fiscal,mes_cierre,fecha_cierre,
-        monto_cerrado,comision_conecta,costos_directos,
-        flag_renovacion,flag_prospectado,flag_cliente_nuevo,flag_sindicado,
-        monto_serta,comision_pm_max,msd_antes_cv,pct_com_ventas,
-        com_ventas_max,excedente,com_final_pm,com_final_ventas,msd_final,
-        notas,status,proyectos(nombre,numero_proyecto),empleados(nombre)
-      `).order('created_at',{ascending:false})
-    ]);
-    const cfgMap={};(cfgData||[]).forEach(r=>{cfgMap[r.clave]=r.valor;});
-    setCfg(cfgMap);
-    setProyectos(proy||[]);
-    setUsuarios(usu||[]);
-    const todas=com||[];
-    if(canSeeAll)setRows(todas);
-    else setRows(todas.filter(r=>String(r.vendedor_id)===String(user.id)));
+    setLoadError('');
+    try{
+      // Queries independientes para evitar fallo en cadena
+      const[cfgRes,proyRes,usuRes,comRes]=await Promise.all([
+        sb.from('config_comisiones').select('clave,valor'),
+        sb.from('proyectos').select('id,numero_proyecto,nombre,empresa,status,importe,flag_renovacion,flag_prospectado,flag_cliente_nuevo,flag_sindicado').order('numero_proyecto',{ascending:false}),
+        sb.from('empleados').select('id,nombre,rol').eq('activo',true).order('nombre'),
+        sb.from('comisiones').select(
+          'id,proyecto_id,vendedor_id,empresa,anio_fiscal,mes_cierre,fecha_cierre,'+
+          'monto_cerrado,comision_conecta,costos_directos,'+
+          'flag_renovacion,flag_prospectado,flag_cliente_nuevo,flag_sindicado,'+
+          'monto_serta,comision_pm_max,msd_antes_cv,pct_com_ventas,'+
+          'com_ventas_max,excedente,com_final_pm,com_final_ventas,msd_final,'+
+          'notas,status,created_at'
+        ).order('created_at',{ascending:false}),
+      ]);
+
+      if(comRes.error) throw new Error('Comisiones: '+comRes.error.message);
+
+      const cfgMap={};(cfgRes.data||[]).forEach(r=>{cfgMap[r.clave]=r.valor;});
+      setCfg(cfgMap);
+
+      const proyMap={};(proyRes.data||[]).forEach(p=>{proyMap[p.id]=p;});
+      const usuMap={};(usuRes.data||[]).forEach(u=>{usuMap[u.id]=u;});
+      setProyectos(proyRes.data||[]);
+      setUsuarios(usuRes.data||[]);
+
+      // Enriquecer comisiones con nombre de proyecto y vendedor
+      const todas=(comRes.data||[]).map(r=>({
+        ...r,
+        proyectos: proyMap[r.proyecto_id]||null,
+        empleados: usuMap[r.vendedor_id]||null,
+      }));
+
+      if(canSeeAll) setRows(todas);
+      else setRows(todas.filter(r=>String(r.vendedor_id)===String(user.id)));
+    }catch(err){
+      setLoadError(err.message||'Error al cargar comisiones');
+    }
     setLoading(false);
   },[canSeeAll,user.id]);
 
@@ -3550,6 +3571,16 @@ function ComisionesModule({user}){
   const anios=Array.from({length:5},(_,i)=>String(new Date().getFullYear()-i));
 
   if(loading)return<div className="p-8"><Spin/></div>;
+  if(loadError)return(
+    <div className="p-8">
+      <div className="bg-red-50 border border-red-200 rounded-2xl p-6 max-w-xl">
+        <p className="font-bold text-red-700 mb-2">❌ Error al cargar el módulo de Comisiones</p>
+        <p className="text-sm text-red-600 font-mono mb-4">{loadError}</p>
+        <p className="text-xs text-gray-500 mb-3">Posibles causas: la tabla <code>comisiones</code> o <code>config_comisiones</code> no existe. Ejecuta <strong>migracion_v8.sql</strong> en Supabase SQL Editor.</p>
+        <Btn onClick={load}>🔄 Reintentar</Btn>
+      </div>
+    </div>
+  );
 
   return(
     <div className="p-6 max-w-full">
