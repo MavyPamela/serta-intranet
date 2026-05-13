@@ -4463,6 +4463,62 @@ SERTA de México`
     setModal('ver');
   };
 
+  const updItem=(i,k,v)=>setForm(f=>{
+    const items=[...f.items];
+    items[i]={...items[i],[k]:v};
+    if(k==='cantidad'||k==='precio_unitario'){
+      const qty=parseFloat(k==='cantidad'?v:items[i].cantidad)||0;
+      const pu=parseFloat(k==='precio_unitario'?v:items[i].precio_unitario)||0;
+      items[i].total=qty*pu;
+    }
+    const sub=items.reduce((s,r)=>s+(r.total||0),0);
+    const reg=provReg(f.proveedor_id);
+    const iva=['moral','fisica_factura','fisica_honorarios','resico','fisica_actividad_emp'].includes(reg)?sub*0.16:0;
+    const retIva=['moral','fisica_factura','fisica_honorarios','fisica_actividad_emp'].includes(reg)?iva*(2/3):0;
+    const retIsr=['fisica_factura','fisica_honorarios','fisica_actividad_emp'].includes(reg)?sub*0.10:0;
+    return{...f,items,subtotal:sub,iva,ret_iva:retIva,ret_isr:retIsr,total_pago:sub+iva-retIva-retIsr};
+  });
+
+  const delItem=i=>setForm(f=>{
+    const items=f.items.filter((_,idx)=>idx!==i);
+    const sub=items.reduce((s,r)=>s+(r.total||0),0);
+    return{...f,items,subtotal:sub};
+  });
+
+  const guardarReq=async e=>{
+    e.preventDefault();setSaving(true);setMsg('');
+    try{
+      const{data:r,error}=await sb.rpc('fn_crear_requisicion',{
+        p_proyecto_id:parseInt(form.proyecto_id),
+        p_proveedor_id:parseInt(form.proveedor_id),
+        p_director_id:parseInt(form.director_id),
+        p_creado_por:user.id,
+        p_tipo:form.tipo||'Normal',
+        p_descripcion:form.descripcion||'',
+        p_observaciones:form.observaciones||'',
+        p_subtotal:form.subtotal||0,
+        p_iva:form.iva||0,
+        p_ret_iva:form.ret_iva||0,
+        p_ret_isr:form.ret_isr||0,
+        p_total_pago:form.total_pago||0,
+        p_regimen:form.regimen||'moral',
+      });
+      if(error)throw error;
+      const reqId=r[0]?.id||r?.id;
+      if(reqId&&form.items.length>0){
+        await sb.from('req_items').insert(form.items.map((it,i)=>({
+          requisicion_id:reqId,actividad_nombre:it.actividad,
+          cantidad:parseFloat(it.cantidad)||1,precio_unitario:parseFloat(it.precio_unitario)||0,
+          total:it.total||0,orden:i+1
+        })));
+      }
+      setMsg('✅ Requisición creada correctamente');
+      await load();
+      setTimeout(()=>{setModal(null);setMsg('');},1200);
+    }catch(er){setMsg('❌ '+(er.message||'Error'));}
+    setSaving(false);
+  };
+
   if(loading)return<div className="p-8"><Spin/></div>;
 
   return(
@@ -4724,14 +4780,6 @@ SERTA de México`
 // ═══════════════════════════════════════════════════════════════
 // APP PRINCIPAL
 // ═══════════════════════════════════════════════════════════════
-const SidebarLogo=({white})=>(
-  <div className="flex items-center gap-2">
-    <div style={{width:32,height:32,borderRadius:6,background:white?'rgba(255,255,255,0.15)':'#00b5b5',display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <span style={{color:'white',fontWeight:700,fontSize:14}}>S</span>
-    </div>
-    <div><p style={{color:white?'white':'#1a252f',fontWeight:700,fontSize:13,lineHeight:1}}>SERTA</p><p style={{color:white?'rgba(255,255,255,0.5)':'#6b7280',fontSize:10,lineHeight:1}}>Intranet</p></div>
-  </div>
-);
 
 function App(){
   const[user,setUser]=useState(getS());
@@ -4744,7 +4792,7 @@ function App(){
       {/* Sidebar */}
       <div className="flex flex-col w-56 shrink-0 h-full overflow-y-auto" style={{background:'linear-gradient(180deg,#1a252f 0%,#2c3e50 100%)'}}>
         <div className="px-4 py-5 border-b border-white/10">
-          <SidebarLogo white/>
+          <SertaLogo size="md" white/>
         </div>
         <nav className="flex-1 px-2 py-3 space-y-0.5">
           {MODS.map(m=>{
@@ -4752,6 +4800,41 @@ function App(){
             if(!ok)return null;
             const active=mod===m.id;
             return(<button key={m.id} onClick={()=>setMod(m.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left ${active?'sidebar-item-active text-white':'text-white/60 hover:bg-white/10 hover:text-white'}`}>
+              <span className="text-base">{m.icon}</span>{m.label}
+            </button>);
+          })}
+        </nav>
+        <div className="px-4 py-4 border-t border-white/10">
+          <div className="flex items-center gap-2 mb-3">
+            <Avatar nombre={user.nombre} foto_url={user.foto_url} size="sm"/>
+            <div className="flex-1 min-w-0"><p className="text-xs font-medium text-white truncate">{user.nombre}</p><p className="text-xs text-white/40 truncate">{user.rol}</p></div>
+          </div>
+          <button onClick={logout} className="w-full text-xs text-white/40 hover:text-white/70 py-1 transition text-left">← Cerrar sesión</button>
+        </div>
+      </div>
+      {/* Contenido */}
+      <div className="flex-1 overflow-auto">
+        {mod==='inicio'&&<Dashboard user={user}/>}
+        {mod==='rrhh'&&<RRHHModule user={user}/>}
+        {mod==='proveedores'&&<ProveedoresModule user={user}/>}
+        {mod==='clientes'&&<ClientesModule user={user}/>}
+        {mod==='ventas'&&<VentasModule user={user}/>}
+        {mod==='proyectos'&&<ProyectosModule user={user}/>}
+        {mod==='requisiciones'&&<RequisicionesModule user={user}/>}
+        {mod==='comisiones'&&<ComisionesModule user={user}/>}
+        {mod==='finanzas'&&<div className="p-6"><Empty msg="Módulo Finanzas — próximamente"/></div>}
+        {mod==='calidad'&&<div className="p-6"><Empty msg="Módulo Calidad — próximamente"/></div>}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
+} onClick={()=>setMod(m.id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition text-left ${active?'sidebar-item-active text-white':'text-white/60 hover:bg-white/10 hover:text-white'}`}>
               <span className="text-base">{m.icon}</span>{m.label}
             </button>);
