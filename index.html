@@ -3349,7 +3349,8 @@ const MESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','
 
 function ComisionesModule({user}){
   const isSuperAdmin=user.rol==='Administrador';
-  const canSeeAll=isSuperAdmin||user.perm_autorizar_proyectos;
+  const canSeeAll=isSuperAdmin||user.perm_autorizar_proyectos||user.perm_ver_comisiones;
+  const esVendedor=(r)=>String(r.vendedor_id)===String(user.id);
 
   // Estado
   const[rows,setRows]=useState([]);
@@ -3601,7 +3602,7 @@ function ComisionesModule({user}){
                   <td className="px-4 py-3 text-right text-gray-700 font-mono text-xs">{fmt(r.monto_cerrado)}</td>
                   <td className="px-4 py-3 text-right text-gray-700 font-mono text-xs">{fmt(r.monto_serta)}</td>
                   <td className="px-4 py-3 text-right text-purple-700 font-mono text-xs font-medium">{fmt(r.com_final_pm)}</td>
-                  <td className="px-4 py-3 text-right text-orange-700 font-mono text-xs font-medium">{fmt(r.com_final_ventas)}</td>
+                  <td className="px-4 py-3 text-right text-orange-700 font-mono text-xs font-medium">{(canSeeAll||esVendedor(r))?fmt(r.com_final_ventas):<span className="text-gray-300">—</span>}</td>
                   <td className="px-4 py-3 text-right text-green-700 font-mono text-xs font-bold">{fmt(r.msd_final)}</td>
                   <td className="px-3 py-3 text-center"><Badge text={r.status} color={r.status==='Registrado'?'green':'gray'}/></td>
                   <td className="px-3 py-3">
@@ -3741,7 +3742,7 @@ function ComisionesModule({user}){
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-purple-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-500">Com. PM Final</p><p className="font-bold text-purple-700 text-lg">{fmt(selRow.com_final_pm)}</p></div>
-              <div className="bg-orange-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-500">Com. Ventas Final</p><p className="font-bold text-orange-700 text-lg">{fmt(selRow.com_final_ventas)}</p></div>
+              {(canSeeAll||esVendedor(selRow))&&<div className="bg-orange-50 rounded-xl p-3 text-center"><p className="text-xs text-gray-500">Com. Ventas Final</p><p className="font-bold text-orange-700 text-lg">{fmt(selRow.com_final_ventas)}</p></div>}
               <div className="bg-green-50 rounded-xl p-3 text-center border-2 border-green-200"><p className="text-xs text-gray-500">MSD Final</p><p className="font-bold text-green-700 text-xl">{fmt(selRow.msd_final)}</p></div>
             </div>
             <div className="flex flex-wrap gap-2">
