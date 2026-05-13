@@ -2352,13 +2352,15 @@ function ProyectosModule({user}){
   const[loading,setLoading]=useState(true);
   const[fStatus,setFStatus]=useState('');
   const[search,setSearch]=useState('');
-  const[modal,setModal]=useState(null); // null | 'nuevo' | 'ver' | 'activar' | 'colabs'
+  const[modal,setModal]=useState(null); // null | 'nuevo' | 'ver' | 'activar' | 'colabs' | 'cerrar'
   const[sel,setSel]=useState(null);
   const[form,setForm]=useState({});
   const[colabs,setColabs]=useState([]);
   const[saving,setSaving]=useState(false);
   const[msg,setMsg]=useState('');
   const[pagos,setPagos]=useState([]);
+  const[cfgComision,setCfgComision]=useState({});
+  const[vendedorCerrar,setVendedorCerrar]=useState('');
 
   // permisos
   const canCreate=user.rol==='Administrador'||user.perm_proyectos;
@@ -2370,16 +2372,16 @@ function ProyectosModule({user}){
   const load=useCallback(async()=>{
     setLoading(true);
     let query=sb.from('proyectos')
-      .select('*, cliente:clientes(nombre)')
+      .select('*, cliente:clientes(nombre), vendedor:empleados!vendedor_id(nombre,foto_url)')
       .in('status',['Autorizado','Activo','Cerrado','Cancelado'])
       .order('numero_proyecto',{ascending:false});
 
     // Control de acceso: si no es admin/director, solo ve sus proyectos
     if(!isAdmin){
-      const{data:colabs}=await sb.from('proyecto_colaboradores')
+      const{data:colabsData}=await sb.from('proyecto_colaboradores')
         .select('proyecto_id').eq('empleado_id',user.id);
-      const colabIds=(colabs||[]).map(c=>c.proyecto_id);
-      let orFilter=`created_by.eq.${user.id},pm_id.eq.${user.id}`;
+      const colabIds=(colabsData||[]).map(c=>c.proyecto_id);
+      let orFilter=`created_by.eq.${user.id},pm_id.eq.${user.id},vendedor_id.eq.${user.id}`;
       if(colabIds.length>0) orFilter+=`,id.in.(${colabIds.join(',')})`;
       query=query.or(orFilter);
     }
@@ -2496,6 +2498,7 @@ function ProyectosModule({user}){
         fecha_inicio_proyecto: form.fecha_inicio_proyecto||null,
         notas:        form.notas||'',
         pm_id:        form.pm_id?parseInt(form.pm_id):null,
+        vendedor_id:  form.vendedor_id?parseInt(form.vendedor_id):null,
         estudio_gipa: !!form.estudio_gipa,
         costos_operativos_reales:  form.costos_operativos_reales?parseFloat(form.costos_operativos_reales):0,
         compensacion_pms:          form.compensacion_pms?parseFloat(form.compensacion_pms):0,
@@ -2522,10 +2525,75 @@ function ProyectosModule({user}){
     setSaving(false);
   };
 
-  const cerrarProyecto=async(p)=>{
-    if(!confirm(`¿Marcar como Cerrado el proyecto "${p.nombre}"?`))return;
-    await sb.from('proyectos').update({status:'Cerrado',closed_at:new Date().toISOString(),updated_at:new Date().toISOString()}).eq('id',p.id);
-    load();
+  const abrirCerrarProyecto=async(p)=>{
+    setSel(p);
+    setVendedorCerrar(String(p.vendedor_id||p.created_by||''));
+    setMsg('');
+    // Cargar config de comisiones
+    const{data:cfg}=await sb.from('config_comisiones').select('clave,valor');
+    const cfgMap={};(cfg||[]).forEach(r=>{cfgMap[r.clave]=r.valor;});
+    setCfgComision(cfgMap);
+    setModal('cerrar');
+  };
+
+  const confirmarCierre=async()=>{
+    if(!sel)return;
+    setSaving(true);setMsg('');
+    try{
+      // 1. Cerrar proyecto
+      await sb.from('proyectos').update({
+        status:'Cerrado',
+        vendedor_id:vendedorCerrar?parseInt(vendedorCerrar):null,
+        closed_at:new Date().toISOString(),
+        updated_at:new Date().toISOString()
+      }).eq('id',sel.id);
+
+      // 2. Calcular y guardar comisión en borrador
+      const imp=parseFloat(sel.importe)||0;
+      const costos=parseFloat(sel.costos_operativos_reales)||0;
+      const calc=calcComision({
+        monto_cerrado:imp,
+        comision_conecta:0,
+        costos_directos:costos,
+        empresa:sel.empresa||'SERTA',
+        flag_renovacion:!!sel.flag_renovacion,
+        flag_prospectado:!!sel.flag_prospectado,
+        flag_cliente_nuevo:!!sel.flag_cliente_nuevo,
+        flag_sindicado:!!sel.flag_sindicado,
+      },cfgComision);
+
+      const hoy=new Date();
+      await sb.rpc('fn_guardar_comision',{
+        p_proyecto_id:sel.id,
+        p_vendedor_id:vendedorCerrar?parseInt(vendedorCerrar):null,
+        p_empresa:sel.empresa||'SERTA',
+        p_anio_fiscal:sel.anio_fiscal||hoy.getFullYear(),
+        p_mes_cierre:hoy.getMonth()+1,
+        p_fecha_cierre:hoy.toISOString().split('T')[0],
+        p_monto_cerrado:imp,
+        p_comision_conecta:0,
+        p_costos_directos:costos,
+        p_flag_renovacion:!!sel.flag_renovacion,
+        p_flag_prospectado:!!sel.flag_prospectado,
+        p_flag_cliente_nuevo:!!sel.flag_cliente_nuevo,
+        p_flag_sindicado:!!sel.flag_sindicado,
+        p_monto_serta:calc.monto_serta,
+        p_comision_pm_max:calc.comision_pm_max,
+        p_msd_antes_cv:calc.msd_antes_cv,
+        p_pct_com_ventas:calc.pct_com_ventas,
+        p_com_ventas_max:calc.com_ventas_max,
+        p_excedente:calc.excedente,
+        p_com_final_pm:calc.com_final_pm,
+        p_com_final_ventas:calc.com_final_ventas,
+        p_msd_final:calc.msd_final,
+        p_notas:'Generada automáticamente al cerrar proyecto.',
+        p_status:'Borrador',
+      });
+
+      await load();
+      setModal(null);
+    }catch(er){setMsg('❌ '+(er.message||'Error al cerrar'));}
+    setSaving(false);
   };
 
   const addColab=async(empId)=>{
@@ -2652,10 +2720,10 @@ function ProyectosModule({user}){
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1 flex-wrap">
                         <Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadColabs(p.id);setModal('ver');}}>Ver</Btn>
-                        {(isPM(p)||isAdmin||canActivate)&&['Activo','Prospecto','Autorizado'].includes(p.status)&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);setForm({...p,pm_id:p.pm_id||'',importe:p.importe||'',costo_final:p.costo_final||'',costos_operativos_reales:p.costos_operativos_reales||'',compensacion_pms:p.compensacion_pms||'',pct_comision_venta:p.pct_comision_venta||'',pct_comision_operacion:p.pct_comision_operacion||'',comentarios_pm:p.comentarios_pm||'',estudio_gipa:!!p.estudio_gipa,briefing_objetivo:p.briefing_objetivo||'',briefing_metodologia:p.briefing_metodologia||'',briefing_metodologia_np:!!p.briefing_metodologia_np,briefing_preguntas:p.briefing_preguntas||'',briefing_preguntas_np:!!p.briefing_preguntas_np,briefing_presup_cliente:p.briefing_presup_cliente||'',briefing_presup_cliente_np:!!p.briefing_presup_cliente_np,briefing_tiempo:p.briefing_tiempo||'',briefing_tiempo_np:!!p.briefing_tiempo_np});await loadPagos(p.id);setMsg('');setModal('editar');}}>✏️ Editar</Btn>}
+                        {(isPM(p)||isAdmin||canActivate)&&['Activo','Prospecto','Autorizado'].includes(p.status)&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);setForm({...p,pm_id:p.pm_id||'',vendedor_id:p.vendedor_id||'',importe:p.importe||'',costo_final:p.costo_final||'',costos_operativos_reales:p.costos_operativos_reales||'',compensacion_pms:p.compensacion_pms||'',pct_comision_venta:p.pct_comision_venta||'',pct_comision_operacion:p.pct_comision_operacion||'',comentarios_pm:p.comentarios_pm||'',estudio_gipa:!!p.estudio_gipa,briefing_objetivo:p.briefing_objetivo||'',briefing_metodologia:p.briefing_metodologia||'',briefing_metodologia_np:!!p.briefing_metodologia_np,briefing_preguntas:p.briefing_preguntas||'',briefing_preguntas_np:!!p.briefing_preguntas_np,briefing_presup_cliente:p.briefing_presup_cliente||'',briefing_presup_cliente_np:!!p.briefing_presup_cliente_np,briefing_tiempo:p.briefing_tiempo||'',briefing_tiempo_np:!!p.briefing_tiempo_np});await loadPagos(p.id);setMsg('');setModal('editar');}}>✏️ Editar</Btn>}
                         {canActivate&&(p.status==='Prospecto'||p.status==='Autorizado')&&<Btn size="sm" color="green" onClick={()=>{setSel(p);setForm({pm_id:''});setMsg('');setModal('activar');}}>Activar</Btn>}
                         {(isPM(p)||isAdmin)&&p.status==='Activo'&&<Btn size="sm" color="outline" onClick={async()=>{setSel(p);await loadColabs(p.id);setModal('colabs');}}>Equipo</Btn>}
-                        {(isPM(p)||isAdmin)&&p.status==='Activo'&&<Btn size="sm" color="blue" onClick={()=>cerrarProyecto(p)}>Cerrar</Btn>}
+                        {(isPM(p)||isAdmin)&&p.status==='Activo'&&<Btn size="sm" color="blue" onClick={()=>abrirCerrarProyecto(p)}>Cerrar</Btn>}
                         {canActivate&&(p.status==='Prospecto'||p.status==='Autorizado')&&<Btn size="sm" color="red" onClick={()=>cancelarProyecto(p)}>Cancelar</Btn>}
                       </div>
                     </td>
@@ -2779,6 +2847,21 @@ function ProyectosModule({user}){
             {/* ── Datos generales ── */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input label="Nombre del proyecto *" value={form.nombre||''} onChange={v=>setForm(f=>({...f,nombre:v}))} required className="md:col-span-2"/>
+              {/* Vendedor — quién vendió el proyecto */}
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">🧑‍💼 Vendedor</label>
+                {isAdmin?(
+                  <select value={form.vendedor_id||''} onChange={e=>setForm(f=>({...f,vendedor_id:e.target.value}))}
+                    className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
+                    <option value="">— Sin asignar —</option>
+                    {empleados.map(e=><option key={e.id} value={e.id}>{e.nombre}{e.puesto?` · ${e.puesto}`:''}</option>)}
+                  </select>
+                ):(
+                  <div className="border border-gray-200 rounded-xl px-3 py-2 bg-gray-50 text-sm text-gray-700">
+                    {(()=>{const v=empleados.find(e=>String(e.id)===String(form.vendedor_id));return v?v.nombre:<span className="text-gray-400 italic">Sin asignar</span>;})()}
+                  </div>
+                )}
+              </div>
               {/* Project Manager — asignado desde Ventas, solo lectura */}
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-gray-500">👤 Project Manager <span className="text-gray-400 font-normal">(asignado en Ventas)</span></label>
@@ -3017,6 +3100,64 @@ function ProyectosModule({user}){
           </form>
         </Modal>
       )}
+
+      {/* ── Modal CERRAR PROYECTO ── */}
+      {modal==='cerrar'&&sel&&(()=>{
+        const imp=parseFloat(sel.importe)||0;
+        const costos=parseFloat(sel.costos_operativos_reales)||0;
+        const calc=calcComision({
+          monto_cerrado:imp,comision_conecta:0,costos_directos:costos,
+          empresa:sel.empresa||'SERTA',
+          flag_renovacion:!!sel.flag_renovacion,flag_prospectado:!!sel.flag_prospectado,
+          flag_cliente_nuevo:!!sel.flag_cliente_nuevo,flag_sindicado:!!sel.flag_sindicado,
+        },cfgComision);
+        const fmtN=v=>(v||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+        return(
+        <Modal title={`Cerrar proyecto — ${sel.nombre}`} onClose={()=>setModal(null)} size="md">
+          <div className="space-y-4">
+            <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700">
+              <p>Al cerrar se generará automáticamente un <strong>borrador de comisión</strong> en el módulo Comisiones. Podrás revisarlo y ajustarlo ahí.</p>
+            </div>
+            {/* Vendedor */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">🧑‍💼 Vendedor (quien generó la venta)</label>
+              <select value={vendedorCerrar} onChange={e=>setVendedorCerrar(e.target.value)}
+                className="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">
+                <option value="">— Sin asignar —</option>
+                {empleados.map(e=><option key={e.id} value={e.id}>{e.nombre}{e.puesto?` · ${e.puesto}`:''}</option>)}
+              </select>
+            </div>
+            {/* Resumen comisión */}
+            <div className="rounded-xl border border-gray-100 overflow-hidden">
+              <div className="bg-gray-50 px-4 py-2 border-b border-gray-100">
+                <p className="text-xs font-bold text-gray-600 uppercase tracking-wide">💲 Resumen de comisión calculada</p>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {[
+                  ['Importe del proyecto',fmt(imp)],
+                  ['Monto SERTA',fmt(calc.monto_serta)],
+                  ['Comisión ventas ('+((calc.pct_com_ventas||0)*100).toFixed(2)+'%)',fmt(calc.com_final_ventas),'text-green-700 font-semibold'],
+                  ['Comisión PM',fmt(calc.com_final_pm),'text-blue-700'],
+                  ['Margen final (MSD)',fmt(calc.msd_final),calc.msd_final>=0?'text-gray-800':'text-red-600 font-semibold'],
+                ].map(([k,v,cls='text-gray-800'])=>(
+                  <div key={k} className="flex justify-between items-center px-4 py-2 text-sm">
+                    <span className="text-gray-500">{k}</span>
+                    <span className={cls}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {msg&&<p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{msg}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Btn color="gray" onClick={()=>setModal(null)}>Cancelar</Btn>
+              <Btn color="blue" onClick={confirmarCierre} disabled={saving}>
+                {saving?'Cerrando...':'✅ Confirmar cierre'}
+              </Btn>
+            </div>
+          </div>
+        </Modal>
+        );
+      })()}
 
       {/* ── Modal EQUIPO / COLABORADORES ── */}
       {modal==='colabs'&&sel&&(
