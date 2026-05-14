@@ -1790,6 +1790,9 @@ function ClientesModule({user}){
   );
 }
 
+const STATUS_COLOR={Venta:'purple','En espera de autorización':'orange',Autorizado:'green',Cancelado:'red','En venta':'purple',Perdido:'gray',Activo:'green',Cerrado:'blue'};
+const TIPOS_ESTUDIO=['Cuantitativo','Cualitativo','Cuantitativo y Cualitativo','Precios','Sindicado','Otro'];
+
 function VentasModule({user}){
   const[data,setData]=useState([]);
   const[clientes,setClientes]=useState([]);
